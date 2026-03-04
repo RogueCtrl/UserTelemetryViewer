@@ -45,8 +45,8 @@ Open `http://localhost:5173` and watch the avatars move.
 
 ```
 ┌─────────────────┐     POST /api/events     ┌──────────────────┐     WebSocket      ┌──────────────────┐
-│  Your Website    │ ─────────────────────▶  │    server.ts      │ ─────────────────▶ │   React Frontend  │
-│  (or simulator)  │  PostHog JSON payload    │  Express+Socket.io │  Real-time push    │  (localhost:5173)  │
+│  Your Website   │ ─────────────────────▶   │    server.ts     │ ─────────────────▶ │  React Frontend  │
+│  (or simulator) │  PostHog JSON payload    │ Express+Socket.io│  Real-time push    │ (localhost:5173) │
 └─────────────────┘                          └──────────────────┘                    └──────────────────┘
 ```
 
