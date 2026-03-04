@@ -4,6 +4,7 @@ import './index.css';
 import { GameMap } from './components/GameMap';
 import type { UserState } from './components/Avatar';
 import { TransactionPanel, type Transaction } from './components/TransactionPanel';
+import { SessionTimeline, type HistoryEntry } from './components/SessionTimeline';
 import { Activity, ArrowRight } from 'lucide-react';
 
 // Connect to the local backend server
@@ -26,6 +27,8 @@ const App: React.FC = () => {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [userHistories, setUserHistories] = useState<Record<string, HistoryEntry[]>>({});
   const feedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,6 +37,10 @@ const App: React.FC = () => {
 
     socket.on('gameState', (serverUsers: UserState[]) => {
       setUsers(serverUsers);
+    });
+
+    socket.on('allHistory', (allHistory: Record<string, HistoryEntry[]>) => {
+      setUserHistories(allHistory);
     });
 
     socket.on('userUpdate', (updatedUser: UserState) => {
@@ -59,6 +66,10 @@ const App: React.FC = () => {
       }, ...prev].slice(0, 30));
     });
 
+    socket.on('userHistory', ({ userId, history }: { userId: string, history: HistoryEntry[] }) => {
+      setUserHistories(prev => ({ ...prev, [userId]: history }));
+    });
+
     socket.on('transaction', (txn: Transaction) => {
       setTransactions(prev => [txn, ...prev].slice(0, 50));
       setTotalRevenue(prev => prev + txn.amount);
@@ -66,17 +77,31 @@ const App: React.FC = () => {
 
     socket.on('userLeft', (userId: string) => {
       setUsers(prev => prev.filter(u => u.id !== userId));
+      setUserHistories(prev => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+      setSelectedUserId(prev => prev === userId ? null : prev);
     });
 
     return () => {
       socket.off('connect');
       socket.off('disconnect');
       socket.off('gameState');
+      socket.off('allHistory');
       socket.off('userUpdate');
+      socket.off('userHistory');
       socket.off('transaction');
       socket.off('userLeft');
     };
   }, []);
+
+  const selectedUser = selectedUserId ? users.find(u => u.id === selectedUserId) : null;
+
+  const handleAvatarClick = (userId: string) => {
+    setSelectedUserId(prev => prev === userId ? null : userId);
+  };
 
   return (
     <div className="app-container">
@@ -128,6 +153,18 @@ const App: React.FC = () => {
         totalRevenue={totalRevenue}
         totalUsers={users.length}
       />
+
+      {/* Session Timeline Panel - Slides in when avatar clicked */}
+      {selectedUser && (
+        <SessionTimeline
+          userName={selectedUser.name}
+          userColor={selectedUser.color}
+          browser={selectedUser.browser}
+          os={selectedUser.os}
+          history={userHistories[selectedUserId!] || []}
+          onClose={() => setSelectedUserId(null)}
+        />
+      )}
 
       {/* Activity Feed Sidebar */}
       <aside
@@ -181,7 +218,11 @@ const App: React.FC = () => {
       </aside>
 
       {/* Main Game Map */}
-      <GameMap users={users} />
+      <GameMap
+        users={users}
+        onAvatarClick={handleAvatarClick}
+        selectedUserId={selectedUserId}
+      />
     </div>
   );
 };

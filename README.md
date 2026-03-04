@@ -10,7 +10,7 @@
 
 A real-time 2D dashboard that transforms website telemetry into a living virtual map. Instead of staring at charts, watch your users navigate your site as animated avatars moving between rooms.
 
-![UserTelemetryViewer Dashboard](docs/screenshot-transactions.png)
+![UserTelemetryViewer Dashboard](docs/screenshot-session.png)
 
 ## Why?
 
@@ -146,7 +146,7 @@ Adding a new room takes ~4 lines of code. See [AGENTS.md](AGENTS.md) for instruc
 - [x] **Checkout transactions** — Floating 💲 animation on purchase events with transaction panel, revenue counter, and conversion rate
 - [x] **Sub-rooms for page elements** — Adjoining mini-rooms for on-page drawers, modals, and alternate page modes (Filter Panel, Quick View, Payment Form)
 - [ ] **A\* pathfinding** — Avatars walk between rooms instead of teleporting
-- [ ] **Session timelines** — Click an avatar to see their full journey through the site
+- [x] **Session timelines** — Click an avatar to see their full journey through the site
 - [ ] **Room furniture** — Add visual elements inside rooms (shopping carts, forms, etc.)
 - [ ] **Multiple floors** — Navigate between different map views for different site sections
 - [ ] **Real PostHog webhook adapter** — Production-ready integration with auth

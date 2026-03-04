@@ -17,12 +17,15 @@ const io = new Server(httpServer, {
 
 // Simple state storage
 const activeUsers: Record<string, any> = {};
+const userHistory: Record<string, any[]> = {};
 
 io.on('connection', (socket) => {
     console.log('Frontend client connected:', socket.id);
 
     // Send current state to new clients
     socket.emit('gameState', Object.values(activeUsers));
+    // Send all history to new clients
+    socket.emit('allHistory', userHistory);
 
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
@@ -113,8 +116,21 @@ app.post('/api/events', (req, res) => {
 
     console.log(`[Event] ${name} -> ${roomInfo.label} (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}) | ${actionStr}${isPurchase ? ` $${purchaseAmount?.toFixed(2)}` : ''}`);
 
+    // Store history entry
+    if (!userHistory[userId]) userHistory[userId] = [];
+    userHistory[userId].unshift({
+        room: roomInfo.label,
+        action: actionStr,
+        time: new Date().toLocaleTimeString(),
+        url: url,
+        isPurchase,
+        amount: purchaseAmount,
+    });
+    if (userHistory[userId].length > 50) userHistory[userId].pop();
+
     // Broadcast the update to all connected React clients
     io.emit('userUpdate', activeUsers[userId]);
+    io.emit('userHistory', { userId, history: userHistory[userId] });
 
     // Emit transaction event for purchases
     if (isPurchase && purchaseAmount) {
@@ -139,6 +155,7 @@ setInterval(() => {
     Object.keys(activeUsers).forEach(id => {
         if (now - activeUsers[id].lastUpdate > 120000) {
             delete activeUsers[id];
+            delete userHistory[id];
             changed = true;
             io.emit('userLeft', id);
         }

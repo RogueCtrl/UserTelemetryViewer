@@ -19,9 +19,11 @@ export interface UserState {
 interface AvatarProps {
     user: UserState;
     gridSize?: number;
+    isSelected?: boolean;
+    onClick?: (userId: string) => void;
 }
 
-export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40 }) => {
+export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40, isSelected, onClick }) => {
     const [isHovered, setIsHovered] = useState(false);
     const isPurchase = user.action === 'Purchase';
 
@@ -37,13 +39,15 @@ export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40 }) => {
                 left: 0,
                 transform: `translate(${pixelX}px, ${pixelY}px) translate(-50%, -50%)`,
                 transition: 'transform 1.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                zIndex: 50,
+                zIndex: isSelected ? 55 : 50,
                 cursor: 'pointer',
             }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
+            onClick={() => onClick?.(user.id)}
         >
             <div
+                className={isSelected ? 'selected-ring' : ''}
                 style={{
                     width: '32px',
                     height: '32px',

@@ -36,9 +36,11 @@ const ROOM_LABEL_TO_ID: Record<string, string> = {
 
 interface GameMapProps {
     users: UserState[];
+    onAvatarClick?: (userId: string) => void;
+    selectedUserId?: string | null;
 }
 
-export const GameMap: React.FC<GameMapProps> = ({ users }) => {
+export const GameMap: React.FC<GameMapProps> = ({ users, onAvatarClick, selectedUserId }) => {
     // Count occupancy per room (including sub-rooms)
     const occupancy: Record<string, number> = {};
     users.forEach(u => {
@@ -82,7 +84,12 @@ export const GameMap: React.FC<GameMapProps> = ({ users }) => {
                 />
             ))}
             {users.map(u => (
-                <Avatar key={u.id} user={u} />
+                <Avatar
+                    key={u.id}
+                    user={u}
+                    isSelected={u.id === selectedUserId}
+                    onClick={onAvatarClick}
+                />
             ))}
         </div>
     );
