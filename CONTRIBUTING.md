@@ -47,12 +47,16 @@ Then open `http://localhost:5173`.
 
 ## Project Structure
 
+- `rooms.json` — Room layout config (single source of truth)
 - `server.ts` — Express + Socket.io backend
 - `simulate_posthog.js` — Synthetic PostHog event generator
 - `src/App.tsx` — Main React app with WebSocket client
-- `src/components/GameMap.tsx` — Room layout and avatar overlay
-- `src/components/Room.tsx` — Individual room panels
-- `src/components/Avatar.tsx` — Animated avatars with hover tooltips
+- `src/components/GameMap.tsx` — Dynamic room layout and avatar overlay
+- `src/components/Room.tsx` — Room panels with sub-room rendering
+- `src/components/Avatar.tsx` — Animated avatars with pathfinding, hover tooltips, click-to-select
+- `src/components/SessionTimeline.tsx` — Per-user journey timeline panel
+- `src/components/TransactionPanel.tsx` — Revenue counter + recent purchases
+- `src/utils/pathfinding.ts` — BFS graph traversal for avatar movement
 - `src/index.css` — Design system and animations
 
 See `AGENTS.md` for a full architecture overview.
@@ -61,12 +65,12 @@ See `AGENTS.md` for a full architecture overview.
 
 Check the [issues](https://github.com/RogueCtrl/UserTelemetryViewer/issues) for open tasks. Good first contributions:
 
-- **New room types** — Add rooms for different page categories
-- **Pathfinding** — Implement A* so avatars walk between rooms instead of teleporting
+- **New room types** — Add rooms via `rooms.json` for different page categories
 - **Real telemetry adapters** — Integrate Segment, Mixpanel, or Google Analytics
-- **Pixel art sprites** — Replace circle avatars with animated pixel characters
-- **User session timelines** — Click an avatar to see their full journey
 - **Room furniture** — Add visual elements inside rooms (desks, shelves, etc.)
+- **Multiple floors** — Different map views for different site sections
+- **User search** — Find a specific user on the map
+- **Historical replay** — Scrub through time to see past traffic
 - **Dark/light theme toggle**
 - **Documentation improvements**
 

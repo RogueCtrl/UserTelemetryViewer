@@ -124,6 +124,8 @@ export const GameMap: React.FC<GameMapProps> = ({ users, rooms, connections, onA
                     user={u}
                     isSelected={u.id === selectedUserId}
                     onClick={onAvatarClick}
+                    rooms={rooms}
+                    connections={connections}
                 />
             ))}
         </div>

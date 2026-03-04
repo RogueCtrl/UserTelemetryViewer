@@ -1,5 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { User, MousePointerClick, Globe, Monitor } from 'lucide-react';
+import type { RoomData } from './Room';
+import { buildGraph, findPath, getRoomCenter } from '../utils/pathfinding';
 
 export interface UserState {
     id: string;
@@ -16,20 +18,138 @@ export interface UserState {
     purchaseAmount?: number;
 }
 
+interface ConnectionDef {
+    from: string;
+    to: string;
+}
+
 interface AvatarProps {
     user: UserState;
     gridSize?: number;
     isSelected?: boolean;
     onClick?: (userId: string) => void;
+    rooms?: RoomData[];
+    connections?: ConnectionDef[];
 }
 
-export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40, isSelected, onClick }) => {
+export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40, isSelected, onClick, rooms, connections }) => {
     const [isHovered, setIsHovered] = useState(false);
+    const [displayPos, setDisplayPos] = useState({ x: user.x, y: user.y });
+    const [isWalking, setIsWalking] = useState(false);
+    const prevRoomRef = useRef<string | undefined>(user.activeRoom);
+    const walkTimeoutRef = useRef<number[]>([]);
     const isPurchase = user.action === 'Purchase';
 
+    // Build graph once from rooms + connections
+    const graph = useMemo(() => {
+        if (!rooms || !connections) return {};
+        return buildGraph(connections, rooms);
+    }, [rooms, connections]);
+
+    // Build room lookup by name → RoomData
+    const roomByName = useMemo(() => {
+        const map: Record<string, RoomData & { _isSubRoom?: boolean; _parentId?: string }> = {};
+        if (!rooms) return map;
+        for (const room of rooms) {
+            map[room.name] = room;
+            if (room.subRooms) {
+                for (const sub of room.subRooms) {
+                    // Create a pseudo-RoomData for sub-rooms for center calculation
+                    const gap = 0.5;
+                    let sx = room.x, sy = room.y;
+                    if (sub.anchor === 'right') { sx = room.x + room.width + gap; }
+                    else if (sub.anchor === 'bottom') { sy = room.y + room.height + gap; }
+                    else if (sub.anchor === 'left') { sx = room.x - sub.width - gap; }
+                    else if (sub.anchor === 'top') { sy = room.y - sub.height - gap; }
+                    map[sub.name] = { id: sub.id, name: sub.name, x: sx, y: sy, width: sub.width, height: sub.height, _isSubRoom: true, _parentId: room.id } as any;
+                }
+            }
+        }
+        return map;
+    }, [rooms]);
+
+    // Build room lookup by id → name (for graph lookups)
+    const roomNameById = useMemo(() => {
+        const map: Record<string, string> = {};
+        for (const [name, room] of Object.entries(roomByName)) {
+            map[room.id] = name;
+        }
+        return map;
+    }, [roomByName]);
+
+    // Pathfinding + waypoint animation on room change
+    useEffect(() => {
+        const prevRoom = prevRoomRef.current;
+        const newRoom = user.activeRoom;
+        prevRoomRef.current = newRoom;
+
+        // Clear any pending walk timeouts
+        walkTimeoutRef.current.forEach(t => clearTimeout(t));
+        walkTimeoutRef.current = [];
+
+        if (!prevRoom || !newRoom || prevRoom === newRoom || !rooms || !connections) {
+            // Same room or no data — jump directly
+            setDisplayPos({ x: user.x, y: user.y });
+            setIsWalking(false);
+            return;
+        }
+
+        const prevRoomData = roomByName[prevRoom];
+        const newRoomData = roomByName[newRoom];
+
+        if (!prevRoomData || !newRoomData) {
+            setDisplayPos({ x: user.x, y: user.y });
+            setIsWalking(false);
+            return;
+        }
+
+        // Find path using room IDs
+        const path = findPath(graph, prevRoomData.id, newRoomData.id);
+
+        if (path.length <= 2) {
+            // Direct connection or adjacent — just animate directly
+            setDisplayPos({ x: user.x, y: user.y });
+            setIsWalking(false);
+            return;
+        }
+
+        // Multi-hop path — animate through intermediate waypoints
+        setIsWalking(true);
+        const intermediates = path.slice(1, -1); // skip start and end
+
+        intermediates.forEach((roomId, i) => {
+            const roomName = roomNameById[roomId];
+            const room = roomName ? roomByName[roomName] : null;
+            if (!room) return;
+
+            const center = getRoomCenter(room, gridSize);
+            // Convert back from pixel to grid coords for display
+            const gridX = center.x / gridSize - 0.5;
+            const gridY = center.y / gridSize - 0.5;
+
+            const timeoutId = window.setTimeout(() => {
+                setDisplayPos({ x: gridX, y: gridY });
+            }, (i + 1) * 400);
+
+            walkTimeoutRef.current.push(timeoutId);
+        });
+
+        // Final position — server-assigned coordinates
+        const finalTimeout = window.setTimeout(() => {
+            setDisplayPos({ x: user.x, y: user.y });
+            setIsWalking(false);
+        }, (intermediates.length + 1) * 400);
+
+        walkTimeoutRef.current.push(finalTimeout);
+
+        return () => {
+            walkTimeoutRef.current.forEach(t => clearTimeout(t));
+        };
+    }, [user.activeRoom, user.x, user.y]);
+
     // Center the avatar in the grid cell
-    const pixelX = user.x * gridSize + (gridSize / 2);
-    const pixelY = user.y * gridSize + (gridSize / 2);
+    const pixelX = displayPos.x * gridSize + (gridSize / 2);
+    const pixelY = displayPos.y * gridSize + (gridSize / 2);
 
     return (
         <div
@@ -38,7 +158,9 @@ export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40, isSelected,
                 top: 0,
                 left: 0,
                 transform: `translate(${pixelX}px, ${pixelY}px) translate(-50%, -50%)`,
-                transition: 'transform 1.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
+                transition: isWalking
+                    ? 'transform 0.4s linear'
+                    : 'transform 1.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
                 zIndex: isSelected ? 55 : 50,
                 cursor: 'pointer',
             }}
@@ -63,7 +185,7 @@ export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40, isSelected,
                     position: 'relative',
                     animation: isPurchase
                         ? 'goldPulse 1.5s ease-in-out infinite'
-                        : user.status === 'moving' ? 'float 0.5s ease-in-out infinite alternate' : 'none',
+                        : (isWalking || user.status === 'moving') ? 'float 0.5s ease-in-out infinite alternate' : 'none',
                     transition: 'background-color 0.3s ease, border-color 0.3s ease',
                 }}
             >
@@ -165,4 +287,3 @@ export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40, isSelected,
         </div>
     );
 };
-

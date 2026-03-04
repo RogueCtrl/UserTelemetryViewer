@@ -2,6 +2,15 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## 0.4.0 (2026-03-03)
+
+### Features
+
+* **A\* pathfinding** — Avatars walk through intermediate rooms along connection paths instead of teleporting
+* Client-side BFS on room connection graph with bidirectional edges and sub-room support
+* Waypoint animation: 400ms linear transitions per hop, bouncy easing for final placement
+* New `src/utils/pathfinding.ts` module with `buildGraph`, `findPath`, and `getRoomCenter` utilities
+
 ## 0.3.0 (2026-03-03)
 
 ### Features

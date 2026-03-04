@@ -92,6 +92,7 @@ Or point a [PostHog webhook](https://posthog.com/docs/webhooks) directly at your
 - **Transaction panel** — Live revenue counter, conversion rate, and recent transaction list
 - **Sub-rooms** — Adjoining mini-rooms for drawers, modals, and page modes attached to parent rooms
 - **Session timelines** — Click any avatar to see their full journey in a sliding panel
+- **A* pathfinding** — Avatars walk through intermediate rooms instead of teleporting
 - **Configurable room layouts** — Edit `rooms.json` to model your own site — no code changes needed
 - **Premium dark mode** — Glassmorphism, dot-grid background, smooth gradients
 
@@ -135,6 +136,8 @@ All rooms are defined in [`rooms.json`](rooms.json) — edit this file to model 
 │       ├── Avatar.tsx      # Animated avatar with hover tooltip + click select
 │       ├── SessionTimeline.tsx  # Per-user journey timeline panel
 │       └── TransactionPanel.tsx  # Revenue counter + recent purchases
+├── src/utils/
+│   └── pathfinding.ts     # BFS graph traversal for avatar movement
 ├── docs/
 │   └── screenshot.png     # Dashboard screenshot
 ├── AGENTS.md              # Full architecture guide for AI coding agents
@@ -149,7 +152,7 @@ All rooms are defined in [`rooms.json`](rooms.json) — edit this file to model 
 
 - [x] **Checkout transactions** — Floating 💲 animation on purchase events with transaction panel, revenue counter, and conversion rate
 - [x] **Sub-rooms for page elements** — Adjoining mini-rooms for on-page drawers, modals, and alternate page modes (Filter Panel, Quick View, Payment Form)
-- [ ] **A\* pathfinding** — Avatars walk between rooms instead of teleporting
+- [x] **A\* pathfinding** — Avatars walk between rooms instead of teleporting
 - [x] **Session timelines** — Click an avatar to see their full journey through the site
 - [ ] **Room furniture** — Add visual elements inside rooms (shopping carts, forms, etc.)
 - [ ] **Multiple floors** — Navigate between different map views for different site sections
