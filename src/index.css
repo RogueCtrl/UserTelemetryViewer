@@ -167,3 +167,28 @@ aside div::-webkit-scrollbar-thumb {
     transform: translateY(0);
   }
 }
+
+/* Sub-room styles */
+.sub-room {
+  border: 1.5px dashed rgba(255, 255, 255, 0.12) !important;
+  background: rgba(30, 41, 59, 0.4) !important;
+  border-radius: 10px !important;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3) !important;
+}
+
+.sub-room.occupied {
+  border-color: rgba(139, 92, 246, 0.3) !important;
+  animation: subRoomPulse 3s ease-in-out infinite;
+}
+
+@keyframes subRoomPulse {
+
+  0%,
+  100% {
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  }
+
+  50% {
+    box-shadow: 0 4px 20px rgba(139, 92, 246, 0.15), 0 0 12px rgba(139, 92, 246, 0.08);
+  }
+}

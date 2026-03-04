@@ -20,6 +20,17 @@ const PRODUCTS = [
     { name: 'Custom Integration', price: 149.99 },
 ];
 
+// Sub-room events mapped to their parent pages
+const SUB_ROOM_EVENTS = {
+    'products': [
+        { event: 'drawer_opened', props: { drawer: 'filters' } },
+        { event: 'modal_opened', props: { modal: 'quick_view' } },
+    ],
+    'checkout': [
+        { event: 'form_focused', props: { form: 'payment' } },
+    ],
+};
+
 // Generate 4 persistent mock users mimicking real PostHog distinct IDs
 const MOCK_USERS = Array.from({ length: 4 }).map((_, i) => ({
     distinct_id: `cus_000${i + 1}_posthog`,
@@ -30,13 +41,25 @@ const MOCK_USERS = Array.from({ length: 4 }).map((_, i) => ({
     }
 }));
 
+function getPageKey(url) {
+    if (url.includes('checkout')) return 'checkout';
+    if (url.includes('products')) return 'products';
+    return null;
+}
+
 async function sendPostHogEvent(user) {
     const url = PAGES[Math.floor(Math.random() * PAGES.length)];
     const isCheckoutPage = url.includes('checkout');
+    const pageKey = getPageKey(url);
 
-    // ~15% chance of purchase when on checkout page
+    // ~40% chance of purchase when on checkout page
     const isPurchase = isCheckoutPage && Math.random() < 0.4;
-    const isPageView = !isPurchase && Math.random() > 0.3;
+
+    // ~25% chance of sub-room event when on a page that has sub-rooms
+    const subRoomOptions = pageKey ? SUB_ROOM_EVENTS[pageKey] : null;
+    const isSubRoom = !isPurchase && subRoomOptions && Math.random() < 0.25;
+
+    const isPageView = !isPurchase && !isSubRoom && Math.random() > 0.3;
 
     let event, extraProps;
 
@@ -47,6 +70,10 @@ async function sendPostHogEvent(user) {
             $amount: product.price,
             product_name: product.name,
         };
+    } else if (isSubRoom) {
+        const subRoom = subRoomOptions[Math.floor(Math.random() * subRoomOptions.length)];
+        event = subRoom.event;
+        extraProps = { ...subRoom.props };
     } else if (isPageView) {
         event = '$pageview';
         extraProps = {};
@@ -77,9 +104,14 @@ async function sendPostHogEvent(user) {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        const label = isPurchase
-            ? `Sent order_completed ($${extraProps.$amount}) for ${user.properties.name}`
-            : `Sent ${payload.event} for ${user.properties.name} on ${url}`;
+        let label;
+        if (isPurchase) {
+            label = `Sent order_completed ($${extraProps.$amount}) for ${user.properties.name}`;
+        } else if (isSubRoom) {
+            label = `Sent ${event} (${JSON.stringify(extraProps)}) for ${user.properties.name}`;
+        } else {
+            label = `Sent ${payload.event} for ${user.properties.name} on ${url}`;
+        }
         console.log(`[PostHog Mock] ${label}`);
     } catch (err) {
         console.error(`Failed to send mock PostHog event:`, err.message);

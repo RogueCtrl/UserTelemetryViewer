@@ -90,17 +90,20 @@ Or point a [PostHog webhook](https://posthog.com/docs/webhooks) directly at your
 - **PostHog-compatible** — Drop-in endpoint for PostHog webhooks
 - **Checkout transactions** — Floating 💲 animation on purchase events with golden avatar glow
 - **Transaction panel** — Live revenue counter, conversion rate, and recent transaction list
+- **Sub-rooms** — Adjoining mini-rooms for drawers, modals, and page modes attached to parent rooms
 - **Premium dark mode** — Glassmorphism, dot-grid background, smooth gradients
 
 ## The Rooms
 
-| Room | Maps to URLs containing |
-|------|------------------------|
-| 🚪 Login Portal | `/login` |
-| 🏠 Landing Page | Root URL (`/`) |
-| 📦 Product Catalog | `/products` |
-| 💳 Checkout Arena | `/checkout` |
-| ℹ️ About Us | `/about` |
+| Room | Maps to URLs containing | Sub-rooms |
+|------|------------------------|----------|
+| 🚪 Login Portal | `/login` | |
+| 🏠 Landing Page | Root URL (`/`) | |
+| 📦 Product Catalog | `/products` | Filter Panel, Quick View |
+| 💳 Checkout Arena | `/checkout` | Payment Form |
+| ℹ️ About Us | `/about` | |
+
+Sub-rooms appear as smaller dashed panels attached to their parent room. Avatars move into them on `drawer_opened`, `modal_opened`, or `form_focused` events.
 
 Adding a new room takes ~4 lines of code. See [AGENTS.md](AGENTS.md) for instructions.
 
@@ -141,7 +144,7 @@ Adding a new room takes ~4 lines of code. See [AGENTS.md](AGENTS.md) for instruc
 ## Roadmap
 
 - [x] **Checkout transactions** — Floating 💲 animation on purchase events with transaction panel, revenue counter, and conversion rate
-- [ ] **Sub-rooms for page elements** — Adjoining mini-rooms for on-page drawers, modals, and alternate page modes (e.g. a "Settings Drawer" sub-room attached to the Product Catalog)
+- [x] **Sub-rooms for page elements** — Adjoining mini-rooms for on-page drawers, modals, and alternate page modes (Filter Panel, Quick View, Payment Form)
 - [ ] **A\* pathfinding** — Avatars walk between rooms instead of teleporting
 - [ ] **Session timelines** — Click an avatar to see their full journey through the site
 - [ ] **Room furniture** — Add visual elements inside rooms (shopping carts, forms, etc.)

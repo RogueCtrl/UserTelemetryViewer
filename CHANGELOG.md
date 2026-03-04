@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## 0.2.0 (2026-03-03)
+
+### Features
+
+* **Checkout transactions** — Floating 💲 animation on purchase events with golden avatar glow
+* **Transaction panel** — Live revenue counter, conversion rate, and scrollable list of recent transactions
+* **Sub-rooms** — Adjoining mini-rooms (Filter Panel, Quick View, Payment Form) attached to parent rooms via dashed connector lines
+* Sub-room event detection for `drawer_opened`, `modal_opened`, and `form_focused` events
+* Purple occupancy badges and pulse animation on occupied sub-rooms
+* Simulator generates ~25% sub-room events and ~40% purchase events on relevant pages
+* `--accent-gold` CSS variable and `dollarRise`, `goldPulse`, `subRoomPulse` keyframes
+* Improved room layout spacing to prevent overlap between sub-rooms and adjacent rooms
+
 ## 0.1.0 (2026-03-03)
 
 Initial release.

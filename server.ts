@@ -34,8 +34,12 @@ const ROOM_COORDS: Record<string, { x: number, y: number, w: number, h: number, 
     login: { x: 2, y: 2, w: 6, h: 4, label: 'Login Portal' },
     home: { x: 10, y: 2, w: 8, h: 6, label: 'Landing Page' },
     products: { x: 10, y: 10, w: 8, h: 6, label: 'Product Catalog' },
-    checkout: { x: 20, y: 10, w: 6, h: 6, label: 'Checkout Arena' },
-    about: { x: 2, y: 10, w: 6, h: 4, label: 'About Us' }
+    checkout: { x: 24, y: 10, w: 6, h: 6, label: 'Checkout Arena' },
+    about: { x: 2, y: 10, w: 6, h: 4, label: 'About Us' },
+    // Sub-rooms (positioned relative to parent in frontend, but need absolute coords for avatar placement)
+    products_filters: { x: 18.5, y: 10, w: 4, h: 3, label: 'Filter Panel' },
+    products_quickview: { x: 10, y: 16.5, w: 5, h: 3, label: 'Quick View' },
+    checkout_payment: { x: 24, y: 16.5, w: 4, h: 3, label: 'Payment Form' },
 };
 
 function getRandomPositionInRoom(roomId: string) {
@@ -67,10 +71,19 @@ app.post('/api/events', (req, res) => {
     else if (url === 'https://usertelemetryviewer.com/') room = 'home';
     else if (url.includes('login')) room = 'login';
 
+    // Detect sub-room events (take priority over parent room)
+    if (event === 'drawer_opened' && properties.drawer === 'filters') room = 'products_filters';
+    else if (event === 'modal_opened' && properties.modal === 'quick_view') room = 'products_quickview';
+    else if (event === 'form_focused' && properties.form === 'payment') room = 'checkout_payment';
+
     // Detect purchase events
     const isPurchase = event === 'order_completed' || event === '$purchase';
     const purchaseAmount = isPurchase ? (properties.$amount || properties.revenue || 0) : undefined;
-    const actionStr = isPurchase ? 'Purchase' : event === '$pageview' ? 'Page View' : properties.interaction_type || 'Active';
+    const isSubRoom = event === 'drawer_opened' || event === 'modal_opened' || event === 'form_focused';
+    const actionStr = isPurchase ? 'Purchase'
+        : isSubRoom ? (properties.drawer || properties.modal || properties.form || 'Interaction')
+            : event === '$pageview' ? 'Page View'
+                : properties.interaction_type || 'Active';
 
     // Generate a consistent color based on the distinct_id
     const hashCode = userId.split('').reduce((a: number, b: string) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
