@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import './index.css';
 import { GameMap } from './components/GameMap';
 import type { UserState } from './components/Avatar';
+import type { RoomData } from './components/Room';
 import { TransactionPanel, type Transaction } from './components/TransactionPanel';
 import { SessionTimeline, type HistoryEntry } from './components/SessionTimeline';
 import { Activity, ArrowRight } from 'lucide-react';
@@ -21,6 +22,11 @@ interface FeedItem {
   amount?: number;
 }
 
+interface ConnectionDef {
+  from: string;
+  to: string;
+}
+
 const App: React.FC = () => {
   const [users, setUsers] = useState<UserState[]>([]);
   const [isConnected, setIsConnected] = useState(socket.connected);
@@ -29,7 +35,20 @@ const App: React.FC = () => {
   const [totalRevenue, setTotalRevenue] = useState(0);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [userHistories, setUserHistories] = useState<Record<string, HistoryEntry[]>>({});
+  const [rooms, setRooms] = useState<RoomData[]>([]);
+  const [connections, setConnections] = useState<ConnectionDef[]>([]);
   const feedRef = useRef<HTMLDivElement>(null);
+
+  // Fetch room config on mount
+  useEffect(() => {
+    fetch('http://localhost:3001/api/rooms')
+      .then(res => res.json())
+      .then(config => {
+        setRooms(config.rooms);
+        setConnections(config.connections);
+      })
+      .catch(err => console.error('Failed to load room config:', err));
+  }, []);
 
   useEffect(() => {
     socket.on('connect', () => setIsConnected(true));
@@ -154,7 +173,7 @@ const App: React.FC = () => {
         totalUsers={users.length}
       />
 
-      {/* Session Timeline Panel - Slides in when avatar clicked */}
+      {/* Session Timeline Panel */}
       {selectedUser && (
         <SessionTimeline
           userName={selectedUser.name}
@@ -220,6 +239,8 @@ const App: React.FC = () => {
       {/* Main Game Map */}
       <GameMap
         users={users}
+        rooms={rooms}
+        connections={connections}
         onAvatarClick={handleAvatarClick}
         selectedUserId={selectedUserId}
       />

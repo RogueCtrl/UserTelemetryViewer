@@ -1,0 +1,123 @@
+{
+    "gridSize": 40,
+    "rooms": [
+        {
+            "id": "login",
+            "name": "Login Portal",
+            "x": 2,
+            "y": 2,
+            "width": 6,
+            "height": 4,
+            "color": "rgba(59, 130, 246, 0.15)",
+            "urlPatterns": [
+                "/login"
+            ]
+        },
+        {
+            "id": "home",
+            "name": "Landing Page",
+            "x": 10,
+            "y": 2,
+            "width": 8,
+            "height": 6,
+            "urlPatterns": [
+                "/"
+            ],
+            "urlExact": true
+        },
+        {
+            "id": "products",
+            "name": "Product Catalog",
+            "x": 10,
+            "y": 10,
+            "width": 8,
+            "height": 6,
+            "color": "rgba(139, 92, 246, 0.15)",
+            "urlPatterns": [
+                "/products"
+            ],
+            "subRooms": [
+                {
+                    "id": "products_filters",
+                    "name": "Filter Panel",
+                    "width": 4,
+                    "height": 3,
+                    "anchor": "right",
+                    "eventType": "drawer_opened",
+                    "eventMatch": {
+                        "drawer": "filters"
+                    }
+                },
+                {
+                    "id": "products_quickview",
+                    "name": "Quick View",
+                    "width": 5,
+                    "height": 3,
+                    "anchor": "bottom",
+                    "eventType": "modal_opened",
+                    "eventMatch": {
+                        "modal": "quick_view"
+                    }
+                }
+            ]
+        },
+        {
+            "id": "checkout",
+            "name": "Checkout Arena",
+            "x": 24,
+            "y": 10,
+            "width": 6,
+            "height": 6,
+            "color": "rgba(16, 185, 129, 0.15)",
+            "urlPatterns": [
+                "/checkout"
+            ],
+            "subRooms": [
+                {
+                    "id": "checkout_payment",
+                    "name": "Payment Form",
+                    "width": 4,
+                    "height": 3,
+                    "anchor": "bottom",
+                    "eventType": "form_focused",
+                    "eventMatch": {
+                        "form": "payment"
+                    }
+                }
+            ]
+        },
+        {
+            "id": "about",
+            "name": "About Us",
+            "x": 2,
+            "y": 10,
+            "width": 6,
+            "height": 4,
+            "urlPatterns": [
+                "/about"
+            ]
+        }
+    ],
+    "connections": [
+        {
+            "from": "login",
+            "to": "home"
+        },
+        {
+            "from": "home",
+            "to": "products"
+        },
+        {
+            "from": "products",
+            "to": "checkout"
+        },
+        {
+            "from": "login",
+            "to": "about"
+        },
+        {
+            "from": "about",
+            "to": "products"
+        }
+    ]
+}

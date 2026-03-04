@@ -2,6 +2,8 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import fs from 'fs';
+import path from 'path';
 
 const app = express();
 app.use(cors());
@@ -15,16 +17,66 @@ const io = new Server(httpServer, {
     }
 });
 
-// Simple state storage
+// ─── Load room config from rooms.json ───────────────────────────────────────
+
+const roomConfig = JSON.parse(fs.readFileSync(path.join(import.meta.dirname || __dirname, 'rooms.json'), 'utf-8'));
+
+// Build ROOM_COORDS dynamically from config
+const ROOM_COORDS: Record<string, { x: number, y: number, w: number, h: number, label: string }> = {};
+const URL_ROUTES: { pattern: string, exact: boolean, roomId: string }[] = [];
+const SUB_ROOM_EVENTS: { eventType: string, matchKey: string, matchValue: string, roomId: string }[] = [];
+
+for (const room of roomConfig.rooms) {
+    ROOM_COORDS[room.id] = { x: room.x, y: room.y, w: room.width, h: room.height, label: room.name };
+
+    // Build URL routing rules
+    if (room.urlPatterns) {
+        for (const pattern of room.urlPatterns) {
+            URL_ROUTES.push({ pattern, exact: room.urlExact || false, roomId: room.id });
+        }
+    }
+
+    // Build sub-room coords and event mapping
+    if (room.subRooms) {
+        for (const sub of room.subRooms) {
+            // Calculate absolute position based on anchor
+            const gap = 0.5;
+            let sx = room.x, sy = room.y;
+            if (sub.anchor === 'right') { sx = room.x + room.width + gap; sy = room.y; }
+            else if (sub.anchor === 'bottom') { sx = room.x; sy = room.y + room.height + gap; }
+            else if (sub.anchor === 'left') { sx = room.x - sub.width - gap; sy = room.y; }
+            else if (sub.anchor === 'top') { sx = room.x; sy = room.y - sub.height - gap; }
+
+            ROOM_COORDS[sub.id] = { x: sx, y: sy, w: sub.width, h: sub.height, label: sub.name };
+
+            // Build sub-room event mapping
+            if (sub.eventType && sub.eventMatch) {
+                const [matchKey, matchValue] = Object.entries(sub.eventMatch)[0];
+                SUB_ROOM_EVENTS.push({ eventType: sub.eventType, matchKey, matchValue: matchValue as string, roomId: sub.id });
+            }
+        }
+    }
+}
+
+// Sort URL routes: exact matches first, then longest pattern first
+URL_ROUTES.sort((a, b) => {
+    if (a.exact !== b.exact) return a.exact ? -1 : 1;
+    return b.pattern.length - a.pattern.length;
+});
+
+console.log(`[Config] Loaded ${roomConfig.rooms.length} rooms, ${SUB_ROOM_EVENTS.length} sub-room events, ${URL_ROUTES.length} URL routes`);
+
+// ─── State storage ──────────────────────────────────────────────────────────
+
 const activeUsers: Record<string, any> = {};
 const userHistory: Record<string, any[]> = {};
+
+// ─── WebSocket connections ──────────────────────────────────────────────────
 
 io.on('connection', (socket) => {
     console.log('Frontend client connected:', socket.id);
 
-    // Send current state to new clients
     socket.emit('gameState', Object.values(activeUsers));
-    // Send all history to new clients
     socket.emit('allHistory', userHistory);
 
     socket.on('disconnect', () => {
@@ -32,27 +84,12 @@ io.on('connection', (socket) => {
     });
 });
 
-// Room coordinate map - must match the frontend GameMap ROOMS
-const ROOM_COORDS: Record<string, { x: number, y: number, w: number, h: number, label: string }> = {
-    login: { x: 2, y: 2, w: 6, h: 4, label: 'Login Portal' },
-    home: { x: 10, y: 2, w: 8, h: 6, label: 'Landing Page' },
-    products: { x: 10, y: 10, w: 8, h: 6, label: 'Product Catalog' },
-    checkout: { x: 24, y: 10, w: 6, h: 6, label: 'Checkout Arena' },
-    about: { x: 2, y: 10, w: 6, h: 4, label: 'About Us' },
-    // Sub-rooms (positioned relative to parent in frontend, but need absolute coords for avatar placement)
-    products_filters: { x: 18.5, y: 10, w: 4, h: 3, label: 'Filter Panel' },
-    products_quickview: { x: 10, y: 16.5, w: 5, h: 3, label: 'Quick View' },
-    checkout_payment: { x: 24, y: 16.5, w: 4, h: 3, label: 'Payment Form' },
-};
+// ─── REST endpoints ─────────────────────────────────────────────────────────
 
-function getRandomPositionInRoom(roomId: string) {
-    const room = ROOM_COORDS[roomId] || ROOM_COORDS['login'];
-    const pad = 1; // padding so avatars don't sit on the wall edge
-    return {
-        x: room.x + pad + Math.random() * (room.w - pad * 2),
-        y: room.y + pad + Math.random() * (room.h - pad * 2)
-    };
-}
+// Serve room config to frontend
+app.get('/api/rooms', (_req, res) => {
+    res.json(roomConfig);
+});
 
 // API endpoint mimicking PostHog ingest / custom webhook
 app.post('/api/events', (req, res) => {
@@ -66,23 +103,32 @@ app.post('/api/events', (req, res) => {
     const url = properties.$current_url || '';
     const name = properties.name || `User-${userId.substring(0, 4)}`;
 
-    // Map URL paths to room IDs
-    let room = 'login';
-    if (url.includes('checkout')) room = 'checkout';
-    else if (url.includes('products')) room = 'products';
-    else if (url.includes('about')) room = 'about';
-    else if (url === 'https://usertelemetryviewer.com/') room = 'home';
-    else if (url.includes('login')) room = 'login';
+    // Map URL to room using config-driven routing
+    let room = roomConfig.rooms[0]?.id || 'login'; // fallback to first room
+    for (const route of URL_ROUTES) {
+        if (route.exact) {
+            // For exact match, check if the URL path is exactly the pattern
+            try {
+                const urlPath = new URL(url).pathname;
+                if (urlPath === route.pattern) { room = route.roomId; break; }
+            } catch { /* not a valid URL, skip */ }
+        } else {
+            if (url.includes(route.pattern)) { room = route.roomId; break; }
+        }
+    }
 
     // Detect sub-room events (take priority over parent room)
-    if (event === 'drawer_opened' && properties.drawer === 'filters') room = 'products_filters';
-    else if (event === 'modal_opened' && properties.modal === 'quick_view') room = 'products_quickview';
-    else if (event === 'form_focused' && properties.form === 'payment') room = 'checkout_payment';
+    for (const subEvent of SUB_ROOM_EVENTS) {
+        if (event === subEvent.eventType && properties[subEvent.matchKey] === subEvent.matchValue) {
+            room = subEvent.roomId;
+            break;
+        }
+    }
 
     // Detect purchase events
     const isPurchase = event === 'order_completed' || event === '$purchase';
     const purchaseAmount = isPurchase ? (properties.$amount || properties.revenue || 0) : undefined;
-    const isSubRoom = event === 'drawer_opened' || event === 'modal_opened' || event === 'form_focused';
+    const isSubRoom = SUB_ROOM_EVENTS.some(e => e.eventType === event);
     const actionStr = isPurchase ? 'Purchase'
         : isSubRoom ? (properties.drawer || properties.modal || properties.form || 'Interaction')
             : event === '$pageview' ? 'Page View'
@@ -95,7 +141,7 @@ app.post('/api/events', (req, res) => {
 
     // Calculate position inside the target room
     const pos = getRandomPositionInRoom(room);
-    const roomInfo = ROOM_COORDS[room] || ROOM_COORDS['login'];
+    const roomInfo = ROOM_COORDS[room] || ROOM_COORDS[roomConfig.rooms[0]?.id || 'login'];
 
     // Update or create user
     activeUsers[userId] = {
@@ -146,6 +192,15 @@ app.post('/api/events', (req, res) => {
 
     res.status(200).json({ success: true });
 });
+
+function getRandomPositionInRoom(roomId: string) {
+    const room = ROOM_COORDS[roomId] || ROOM_COORDS[roomConfig.rooms[0]?.id || 'login'];
+    const pad = 1;
+    return {
+        x: room.x + pad + Math.random() * (room.w - pad * 2),
+        y: room.y + pad + Math.random() * (room.h - pad * 2)
+    };
+}
 
 // Clean up stale users (no activity for 2 minutes)
 setInterval(() => {

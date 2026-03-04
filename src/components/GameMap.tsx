@@ -1,51 +1,36 @@
 import { Room, type RoomData } from './Room';
 import { Avatar, type UserState } from './Avatar';
 
-const ROOMS: RoomData[] = [
-    { id: 'login', name: 'Login Portal', x: 2, y: 2, width: 6, height: 4, color: 'rgba(59, 130, 246, 0.15)' },
-    { id: 'home', name: 'Landing Page', x: 10, y: 2, width: 8, height: 6 },
-    {
-        id: 'products', name: 'Product Catalog', x: 10, y: 10, width: 8, height: 6,
-        color: 'rgba(139, 92, 246, 0.15)',
-        subRooms: [
-            { id: 'products_filters', name: 'Filter Panel', width: 4, height: 3, anchor: 'right' },
-            { id: 'products_quickview', name: 'Quick View', width: 5, height: 3, anchor: 'bottom' },
-        ]
-    },
-    {
-        id: 'checkout', name: 'Checkout Arena', x: 24, y: 10, width: 6, height: 6,
-        color: 'rgba(16, 185, 129, 0.15)',
-        subRooms: [
-            { id: 'checkout_payment', name: 'Payment Form', width: 4, height: 3, anchor: 'bottom' },
-        ]
-    },
-    { id: 'about', name: 'About Us', x: 2, y: 10, width: 6, height: 4 }
-];
-
-// Map room labels back to IDs for occupancy counting
-const ROOM_LABEL_TO_ID: Record<string, string> = {
-    'Login Portal': 'login',
-    'Landing Page': 'home',
-    'Product Catalog': 'products',
-    'Checkout Arena': 'checkout',
-    'About Us': 'about',
-    'Filter Panel': 'products_filters',
-    'Quick View': 'products_quickview',
-    'Payment Form': 'checkout_payment',
-};
+interface ConnectionDef {
+    from: string;
+    to: string;
+}
 
 interface GameMapProps {
     users: UserState[];
+    rooms: RoomData[];
+    connections: ConnectionDef[];
     onAvatarClick?: (userId: string) => void;
     selectedUserId?: string | null;
 }
 
-export const GameMap: React.FC<GameMapProps> = ({ users, onAvatarClick, selectedUserId }) => {
+export const GameMap: React.FC<GameMapProps> = ({ users, rooms, connections, onAvatarClick, selectedUserId }) => {
+    const gridSize = 40;
+
+    // Build label-to-id map dynamically
+    const labelToId: Record<string, string> = {};
+    rooms.forEach(r => {
+        labelToId[r.name] = r.id;
+        r.subRooms?.forEach(sub => {
+            labelToId[sub.name] = sub.id;
+        });
+    });
+
     // Count occupancy per room (including sub-rooms)
     const occupancy: Record<string, number> = {};
     users.forEach(u => {
         if (u.activeRoom) {
-            const roomId = ROOM_LABEL_TO_ID[u.activeRoom] || u.activeRoom;
+            const roomId = labelToId[u.activeRoom] || u.activeRoom;
             occupancy[roomId] = (occupancy[roomId] || 0) + 1;
         }
     });
@@ -59,23 +44,73 @@ export const GameMap: React.FC<GameMapProps> = ({ users, onAvatarClick, selected
         return subOcc;
     };
 
+    // Compute connection line endpoints from room data
+    const roomById: Record<string, RoomData> = {};
+    rooms.forEach(r => { roomById[r.id] = r; });
+
+    const getConnectionLine = (conn: ConnectionDef) => {
+        const fromRoom = roomById[conn.from];
+        const toRoom = roomById[conn.to];
+        if (!fromRoom || !toRoom) return null;
+
+        const fromCx = (fromRoom.x + fromRoom.width / 2) * gridSize;
+        const fromCy = (fromRoom.y + fromRoom.height / 2) * gridSize;
+        const toCx = (toRoom.x + toRoom.width / 2) * gridSize;
+        const toCy = (toRoom.y + toRoom.height / 2) * gridSize;
+
+        // Connect from nearest edges
+        const dx = toCx - fromCx;
+        const dy = toCy - fromCy;
+
+        let x1, y1, x2, y2;
+        if (Math.abs(dx) > Math.abs(dy)) {
+            // Horizontal connection
+            if (dx > 0) {
+                x1 = (fromRoom.x + fromRoom.width) * gridSize;
+                x2 = toRoom.x * gridSize;
+            } else {
+                x1 = fromRoom.x * gridSize;
+                x2 = (toRoom.x + toRoom.width) * gridSize;
+            }
+            y1 = fromCy;
+            y2 = toCy;
+        } else {
+            // Vertical connection
+            x1 = fromCx;
+            x2 = toCx;
+            if (dy > 0) {
+                y1 = (fromRoom.y + fromRoom.height) * gridSize;
+                y2 = toRoom.y * gridSize;
+            } else {
+                y1 = fromRoom.y * gridSize;
+                y2 = (toRoom.y + toRoom.height) * gridSize;
+            }
+        }
+
+        return { x1, y1, x2, y2 };
+    };
+
     return (
         <div className="map-container">
-            {/* Connection paths between rooms */}
+            {/* Connection paths between rooms — dynamically generated */}
             <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 5, pointerEvents: 'none' }}>
-                {/* Login -> Landing */}
-                <line x1={8 * 40} y1={4 * 40} x2={10 * 40} y2={4 * 40} stroke="rgba(255,255,255,0.06)" strokeWidth="2" strokeDasharray="6 4" />
-                {/* Landing -> Products */}
-                <line x1={14 * 40} y1={8 * 40} x2={14 * 40} y2={10 * 40} stroke="rgba(255,255,255,0.06)" strokeWidth="2" strokeDasharray="6 4" />
-                {/* Products -> Checkout */}
-                <line x1={18 * 40} y1={13 * 40} x2={24 * 40} y2={13 * 40} stroke="rgba(255,255,255,0.06)" strokeWidth="2" strokeDasharray="6 4" />
-                {/* Login -> About */}
-                <line x1={5 * 40} y1={6 * 40} x2={5 * 40} y2={10 * 40} stroke="rgba(255,255,255,0.06)" strokeWidth="2" strokeDasharray="6 4" />
-                {/* About -> Products */}
-                <line x1={8 * 40} y1={12 * 40} x2={10 * 40} y2={12 * 40} stroke="rgba(255,255,255,0.06)" strokeWidth="2" strokeDasharray="6 4" />
+                {connections.map((conn, i) => {
+                    const line = getConnectionLine(conn);
+                    if (!line) return null;
+                    return (
+                        <line
+                            key={`${conn.from}-${conn.to}-${i}`}
+                            x1={line.x1} y1={line.y1}
+                            x2={line.x2} y2={line.y2}
+                            stroke="rgba(255,255,255,0.06)"
+                            strokeWidth="2"
+                            strokeDasharray="6 4"
+                        />
+                    );
+                })}
             </svg>
 
-            {ROOMS.map(room => (
+            {rooms.map(room => (
                 <Room
                     key={room.id}
                     room={room}

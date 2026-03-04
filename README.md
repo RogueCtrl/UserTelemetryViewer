@@ -91,6 +91,8 @@ Or point a [PostHog webhook](https://posthog.com/docs/webhooks) directly at your
 - **Checkout transactions** — Floating 💲 animation on purchase events with golden avatar glow
 - **Transaction panel** — Live revenue counter, conversion rate, and recent transaction list
 - **Sub-rooms** — Adjoining mini-rooms for drawers, modals, and page modes attached to parent rooms
+- **Session timelines** — Click any avatar to see their full journey in a sliding panel
+- **Configurable room layouts** — Edit `rooms.json` to model your own site — no code changes needed
 - **Premium dark mode** — Glassmorphism, dot-grid background, smooth gradients
 
 ## The Rooms
@@ -105,7 +107,7 @@ Or point a [PostHog webhook](https://posthog.com/docs/webhooks) directly at your
 
 Sub-rooms appear as smaller dashed panels attached to their parent room. Avatars move into them on `drawer_opened`, `modal_opened`, or `form_focused` events.
 
-Adding a new room takes ~4 lines of code. See [AGENTS.md](AGENTS.md) for instructions.
+All rooms are defined in [`rooms.json`](rooms.json) — edit this file to model your own site, then restart the server. No code changes required.
 
 ## Tech Stack
 
@@ -121,15 +123,17 @@ Adding a new room takes ~4 lines of code. See [AGENTS.md](AGENTS.md) for instruc
 ## Project Structure
 
 ```
+├── rooms.json             # Room layout config (single source of truth)
 ├── server.ts              # Express + Socket.io backend
 ├── simulate_posthog.js    # Synthetic PostHog event generator
 ├── src/
 │   ├── App.tsx            # Main app — WebSocket client, header, activity feed
 │   ├── index.css          # Design system — variables, glass-panel, animations
 │   └── components/
-│       ├── GameMap.tsx     # Room layout, occupancy counts, SVG paths
-│       ├── Room.tsx        # Individual room panel with badge
-│       ├── Avatar.tsx      # Animated avatar with hover tooltip
+│       ├── GameMap.tsx     # Dynamic room layout, occupancy counts, SVG paths
+│       ├── Room.tsx        # Individual room panel with badge + sub-rooms
+│       ├── Avatar.tsx      # Animated avatar with hover tooltip + click select
+│       ├── SessionTimeline.tsx  # Per-user journey timeline panel
 │       └── TransactionPanel.tsx  # Revenue counter + recent purchases
 ├── docs/
 │   └── screenshot.png     # Dashboard screenshot
@@ -151,7 +155,7 @@ Adding a new room takes ~4 lines of code. See [AGENTS.md](AGENTS.md) for instruc
 - [ ] **Multiple floors** — Navigate between different map views for different site sections
 - [ ] **Real PostHog webhook adapter** — Production-ready integration with auth
 - [ ] **Segment / Mixpanel adapters** — Support more analytics platforms
-- [ ] **Configurable room layouts** — JSON-based map definitions so anyone can model their site
+- [x] **Configurable room layouts** — JSON-based map definitions so anyone can model their site
 - [ ] **User search** — Find a specific user on the map
 - [ ] **Historical replay** — Scrub through time to see past traffic patterns
 

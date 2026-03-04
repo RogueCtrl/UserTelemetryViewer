@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## 0.3.0 (2026-03-03)
+
+### Features
+
+* **Session timelines** — Click any avatar to see their full journey in a sliding panel with vertical timeline, room transitions, and gold purchase highlights
+* Server-side per-user event history (last 50 events), emitted via `userHistory` and `allHistory` WebSocket events
+* Selected avatar ring highlight with `.selected-ring` CSS class
+* **Configurable room layouts** — All rooms, sub-rooms, connections, and URL patterns defined in `rooms.json`
+* Server dynamically loads `rooms.json` at startup for URL routing and sub-room event mapping
+* New `GET /api/rooms` endpoint serves config to frontend
+* Frontend fetches room config on mount — no hardcoded room definitions
+* Simulator loads `rooms.json` to dynamically build page list and sub-room events
+
 ## 0.2.0 (2026-03-03)
 
 ### Features
