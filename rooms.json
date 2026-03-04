@@ -1,5 +1,6 @@
 {
     "gridSize": 40,
+    "enableTransactions": true,
     "rooms": [
         {
             "id": "login",

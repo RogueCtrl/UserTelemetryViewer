@@ -125,8 +125,9 @@ app.post('/api/events', (req, res) => {
         }
     }
 
-    // Detect purchase events
-    const isPurchase = event === 'order_completed' || event === '$purchase';
+    // Detect purchase events (only if transactions enabled)
+    const txEnabled = roomConfig.enableTransactions !== false;
+    const isPurchase = txEnabled && (event === 'order_completed' || event === '$purchase');
     const purchaseAmount = isPurchase ? (properties.$amount || properties.revenue || 0) : undefined;
     const isSubRoom = SUB_ROOM_EVENTS.some(e => e.eventType === event);
     const actionStr = isPurchase ? 'Purchase'

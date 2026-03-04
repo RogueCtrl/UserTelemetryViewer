@@ -2,6 +2,12 @@
 
 All notable changes to this project will be documented in this file. See [standard-version](https://github.com/conventional-changelog/standard-version) for commit guidelines.
 
+## 0.4.1 (2026-03-03)
+
+### Features
+
+* **Optional transactions** — `enableTransactions` flag in `rooms.json` controls purchase detection and TransactionPanel visibility (defaults to `true`)
+
 ## 0.4.0 (2026-03-03)
 
 ### Features

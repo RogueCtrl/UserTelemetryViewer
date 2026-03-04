@@ -161,6 +161,7 @@ All rooms are defined in [`rooms.json`](rooms.json) — edit this file to model 
 - [x] **Configurable room layouts** — JSON-based map definitions so anyone can model their site
 - [ ] **User search** — Find a specific user on the map
 - [ ] **Historical replay** — Scrub through time to see past traffic patterns
+- [ ] **Alternative transactions** — Not all sites have checkouts — add alternative KPI tracking
 
 ## Contributing
 

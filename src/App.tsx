@@ -37,6 +37,7 @@ const App: React.FC = () => {
   const [userHistories, setUserHistories] = useState<Record<string, HistoryEntry[]>>({});
   const [rooms, setRooms] = useState<RoomData[]>([]);
   const [connections, setConnections] = useState<ConnectionDef[]>([]);
+  const [enableTransactions, setEnableTransactions] = useState(true);
   const feedRef = useRef<HTMLDivElement>(null);
 
   // Fetch room config on mount
@@ -46,6 +47,7 @@ const App: React.FC = () => {
       .then(config => {
         setRooms(config.rooms);
         setConnections(config.connections);
+        setEnableTransactions(config.enableTransactions !== false);
       })
       .catch(err => console.error('Failed to load room config:', err));
   }, []);
@@ -166,12 +168,14 @@ const App: React.FC = () => {
         </div>
       </header>
 
-      {/* Transaction Panel - Bottom Left */}
-      <TransactionPanel
-        transactions={transactions}
-        totalRevenue={totalRevenue}
-        totalUsers={users.length}
-      />
+      {/* Transaction Panel - Bottom Left (only if enabled) */}
+      {enableTransactions && (
+        <TransactionPanel
+          transactions={transactions}
+          totalRevenue={totalRevenue}
+          totalUsers={users.length}
+        />
+      )}
 
       {/* Session Timeline Panel */}
       {selectedUser && (
