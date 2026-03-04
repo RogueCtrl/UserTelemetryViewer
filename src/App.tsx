@@ -3,6 +3,7 @@ import { io } from 'socket.io-client';
 import './index.css';
 import { GameMap } from './components/GameMap';
 import type { UserState } from './components/Avatar';
+import { TransactionPanel, type Transaction } from './components/TransactionPanel';
 import { Activity, ArrowRight } from 'lucide-react';
 
 // Connect to the local backend server
@@ -15,12 +16,16 @@ interface FeedItem {
   action: string;
   time: string;
   color: string;
+  isPurchase?: boolean;
+  amount?: number;
 }
 
 const App: React.FC = () => {
   const [users, setUsers] = useState<UserState[]>([]);
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [totalRevenue, setTotalRevenue] = useState(0);
   const feedRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -41,14 +46,22 @@ const App: React.FC = () => {
       });
 
       // Add to activity feed
+      const isPurchase = updatedUser.action === 'Purchase';
       setFeed(prev => [{
         id: `${updatedUser.id}_${Date.now()}`,
         userName: updatedUser.name,
         room: updatedUser.activeRoom || 'Unknown',
-        action: updatedUser.action || 'Active',
+        action: isPurchase ? `Purchase $${updatedUser.purchaseAmount?.toFixed(2)}` : updatedUser.action || 'Active',
         time: new Date().toLocaleTimeString(),
-        color: updatedUser.color
-      }, ...prev].slice(0, 30)); // Keep last 30 events
+        color: updatedUser.color,
+        isPurchase,
+        amount: updatedUser.purchaseAmount,
+      }, ...prev].slice(0, 30));
+    });
+
+    socket.on('transaction', (txn: Transaction) => {
+      setTransactions(prev => [txn, ...prev].slice(0, 50));
+      setTotalRevenue(prev => prev + txn.amount);
     });
 
     socket.on('userLeft', (userId: string) => {
@@ -60,6 +73,7 @@ const App: React.FC = () => {
       socket.off('disconnect');
       socket.off('gameState');
       socket.off('userUpdate');
+      socket.off('transaction');
       socket.off('userLeft');
     };
   }, []);
@@ -108,6 +122,13 @@ const App: React.FC = () => {
         </div>
       </header>
 
+      {/* Transaction Panel - Bottom Left */}
+      <TransactionPanel
+        transactions={transactions}
+        totalRevenue={totalRevenue}
+        totalUsers={users.length}
+      />
+
       {/* Activity Feed Sidebar */}
       <aside
         className="glass-panel"
@@ -138,18 +159,20 @@ const App: React.FC = () => {
               padding: '8px 10px',
               marginBottom: '6px',
               borderRadius: '10px',
-              backgroundColor: 'rgba(255,255,255,0.03)',
-              border: '1px solid rgba(255,255,255,0.05)',
+              backgroundColor: item.isPurchase ? 'rgba(245, 158, 11, 0.08)' : 'rgba(255,255,255,0.03)',
+              border: item.isPurchase ? '1px solid rgba(245, 158, 11, 0.15)' : '1px solid rgba(255,255,255,0.05)',
               animation: 'slideIn 0.3s ease-out',
             }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: item.color, flexShrink: 0 }} />
+                <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: item.isPurchase ? 'var(--accent-gold)' : item.color, flexShrink: 0 }} />
                 <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.userName}</span>
                 <ArrowRight size={10} color="var(--text-secondary)" />
-                <span style={{ fontSize: '0.75rem', color: 'var(--accent-blue)' }}>{item.room}</span>
+                <span style={{ fontSize: '0.75rem', color: item.isPurchase ? 'var(--accent-gold)' : 'var(--accent-blue)' }}>{item.room}</span>
               </div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.65rem', color: 'var(--accent-green)' }}>{item.action}</span>
+                <span style={{ fontSize: '0.65rem', color: item.isPurchase ? 'var(--accent-gold)' : 'var(--accent-green)' }}>
+                  {item.isPurchase ? '💲 ' : ''}{item.action}
+                </span>
                 <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', opacity: 0.6 }}>{item.time}</span>
               </div>
             </div>

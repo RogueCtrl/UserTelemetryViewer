@@ -67,7 +67,10 @@ app.post('/api/events', (req, res) => {
     else if (url === 'https://usertelemetryviewer.com/') room = 'home';
     else if (url.includes('login')) room = 'login';
 
-    const actionStr = event === '$pageview' ? 'Page View' : properties.interaction_type || 'Active';
+    // Detect purchase events
+    const isPurchase = event === 'order_completed' || event === '$purchase';
+    const purchaseAmount = isPurchase ? (properties.$amount || properties.revenue || 0) : undefined;
+    const actionStr = isPurchase ? 'Purchase' : event === '$pageview' ? 'Page View' : properties.interaction_type || 'Active';
 
     // Generate a consistent color based on the distinct_id
     const hashCode = userId.split('').reduce((a: number, b: string) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
@@ -91,13 +94,26 @@ app.post('/api/events', (req, res) => {
         lastUpdate: Date.now(),
         browser: properties.$browser || 'Unknown',
         os: properties.$os || 'Unknown',
-        currentUrl: url
+        currentUrl: url,
+        purchaseAmount: purchaseAmount
     };
 
-    console.log(`[Event] ${name} -> ${roomInfo.label} (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}) | ${actionStr}`);
+    console.log(`[Event] ${name} -> ${roomInfo.label} (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}) | ${actionStr}${isPurchase ? ` $${purchaseAmount?.toFixed(2)}` : ''}`);
 
     // Broadcast the update to all connected React clients
     io.emit('userUpdate', activeUsers[userId]);
+
+    // Emit transaction event for purchases
+    if (isPurchase && purchaseAmount) {
+        io.emit('transaction', {
+            id: `txn_${userId}_${Date.now()}`,
+            userId,
+            userName: name,
+            amount: purchaseAmount,
+            color: userColor,
+            time: new Date().toLocaleTimeString()
+        });
+    }
 
     res.status(200).json({ success: true });
 });

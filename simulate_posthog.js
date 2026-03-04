@@ -11,6 +11,15 @@ const PAGES = [
     'https://usertelemetryviewer.com/about'
 ];
 
+const PRODUCTS = [
+    { name: 'Pro Dashboard License', price: 49.99 },
+    { name: 'Team Plan (Annual)', price: 199.99 },
+    { name: 'Enterprise Addon', price: 299.99 },
+    { name: 'Starter Kit', price: 9.99 },
+    { name: 'Analytics Widget Pack', price: 29.99 },
+    { name: 'Custom Integration', price: 149.99 },
+];
+
 // Generate 4 persistent mock users mimicking real PostHog distinct IDs
 const MOCK_USERS = Array.from({ length: 4 }).map((_, i) => ({
     distinct_id: `cus_000${i + 1}_posthog`,
@@ -22,30 +31,56 @@ const MOCK_USERS = Array.from({ length: 4 }).map((_, i) => ({
 }));
 
 async function sendPostHogEvent(user) {
-    const isPageView = Math.random() > 0.3;
     const url = PAGES[Math.floor(Math.random() * PAGES.length)];
+    const isCheckoutPage = url.includes('checkout');
+
+    // ~15% chance of purchase when on checkout page
+    const isPurchase = isCheckoutPage && Math.random() < 0.4;
+    const isPageView = !isPurchase && Math.random() > 0.3;
+
+    let event, extraProps;
+
+    if (isPurchase) {
+        const product = PRODUCTS[Math.floor(Math.random() * PRODUCTS.length)];
+        event = 'order_completed';
+        extraProps = {
+            $amount: product.price,
+            product_name: product.name,
+        };
+    } else if (isPageView) {
+        event = '$pageview';
+        extraProps = {};
+    } else {
+        event = 'custom_interaction';
+        extraProps = {
+            interaction_type: ['click', 'scroll', 'hover'][Math.floor(Math.random() * 3)]
+        };
+    }
 
     // Create a synthetic PostHog payload
     const payload = {
         api_key: "phc_mock1234567890",
-        event: isPageView ? "$pageview" : "custom_interaction",
+        event,
         properties: {
             distinct_id: user.distinct_id,
             $current_url: url,
             $lib: "web",
             ...user.properties,
-            ...(isPageView ? {} : { interaction_type: ['click', 'scroll', 'hover'][Math.floor(Math.random() * 3)] })
+            ...extraProps
         },
         timestamp: new Date().toISOString()
     };
 
     try {
-        const res = await fetch(ENDPOINT, {
+        await fetch(ENDPOINT, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-        console.log(`[PostHog Mock] Sent ${payload.event} for ${user.properties.name} on ${url}`);
+        const label = isPurchase
+            ? `Sent order_completed ($${extraProps.$amount}) for ${user.properties.name}`
+            : `Sent ${payload.event} for ${user.properties.name} on ${url}`;
+        console.log(`[PostHog Mock] ${label}`);
     } catch (err) {
         console.error(`Failed to send mock PostHog event:`, err.message);
     }

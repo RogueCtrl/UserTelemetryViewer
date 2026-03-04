@@ -13,6 +13,7 @@ export interface UserState {
     browser?: string;
     os?: string;
     currentUrl?: string;
+    purchaseAmount?: number;
 }
 
 interface AvatarProps {
@@ -22,6 +23,7 @@ interface AvatarProps {
 
 export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40 }) => {
     const [isHovered, setIsHovered] = useState(false);
+    const isPurchase = user.action === 'Purchase';
 
     // Center the avatar in the grid cell
     const pixelX = user.x * gridSize + (gridSize / 2);
@@ -45,22 +47,44 @@ export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40 }) => {
                 style={{
                     width: '32px',
                     height: '32px',
-                    backgroundColor: user.color,
+                    backgroundColor: isPurchase ? 'var(--accent-gold)' : user.color,
                     borderRadius: '50%',
                     display: 'flex',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    boxShadow: `0 0 16px ${user.color}80, inset 0 0 8px rgba(255,255,255,0.3)`,
-                    border: '2px solid rgba(255,255,255,0.8)',
+                    boxShadow: isPurchase
+                        ? undefined
+                        : `0 0 16px ${user.color}80, inset 0 0 8px rgba(255,255,255,0.3)`,
+                    border: isPurchase ? '2px solid rgba(245, 158, 11, 0.8)' : '2px solid rgba(255,255,255,0.8)',
                     position: 'relative',
-                    animation: user.status === 'moving' ? 'float 0.5s ease-in-out infinite alternate' : 'none',
-                    transition: 'box-shadow 0.3s ease',
+                    animation: isPurchase
+                        ? 'goldPulse 1.5s ease-in-out infinite'
+                        : user.status === 'moving' ? 'float 0.5s ease-in-out infinite alternate' : 'none',
+                    transition: 'background-color 0.3s ease, border-color 0.3s ease',
                 }}
             >
                 <User size={18} color="#fff" />
 
-                {/* Action Indicator */}
-                {user.action && user.action !== 'Page View' && (
+                {/* Floating $ sign for purchase events */}
+                {isPurchase && (
+                    <div style={{
+                        position: 'absolute',
+                        top: -8,
+                        left: '50%',
+                        transform: 'translateX(-50%)',
+                        animation: 'dollarRise 1.5s ease-out forwards',
+                        pointerEvents: 'none',
+                        fontSize: '1.1rem',
+                        fontWeight: 800,
+                        color: 'var(--accent-gold)',
+                        textShadow: '0 0 8px rgba(245, 158, 11, 0.6)',
+                    }}>
+                        $
+                    </div>
+                )}
+
+                {/* Action Indicator (non-purchase) */}
+                {user.action && user.action !== 'Page View' && !isPurchase && (
                     <div style={{ position: 'absolute', top: -14, right: -14, animation: 'pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards' }}>
                         <div className="glass-panel" style={{ padding: '4px', borderRadius: '50%', border: '1px solid var(--accent-green)' }}>
                             <MousePointerClick size={12} color="var(--accent-green)" />

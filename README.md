@@ -10,7 +10,7 @@
 
 A real-time 2D dashboard that transforms website telemetry into a living virtual map. Instead of staring at charts, watch your users navigate your site as animated avatars moving between rooms.
 
-![UserTelemetryViewer Dashboard](docs/screenshot.png)
+![UserTelemetryViewer Dashboard](docs/screenshot-transactions.png)
 
 ## Why?
 
@@ -88,6 +88,8 @@ Or point a [PostHog webhook](https://posthog.com/docs/webhooks) directly at your
 - **Consistent user colors** — Same user always gets the same color (hash-based)
 - **Auto-cleanup** — Stale users evicted after 2 minutes of inactivity
 - **PostHog-compatible** — Drop-in endpoint for PostHog webhooks
+- **Checkout transactions** — Floating 💲 animation on purchase events with golden avatar glow
+- **Transaction panel** — Live revenue counter, conversion rate, and recent transaction list
 - **Premium dark mode** — Glassmorphism, dot-grid background, smooth gradients
 
 ## The Rooms
@@ -124,7 +126,8 @@ Adding a new room takes ~4 lines of code. See [AGENTS.md](AGENTS.md) for instruc
 │   └── components/
 │       ├── GameMap.tsx     # Room layout, occupancy counts, SVG paths
 │       ├── Room.tsx        # Individual room panel with badge
-│       └── Avatar.tsx      # Animated avatar with hover tooltip
+│       ├── Avatar.tsx      # Animated avatar with hover tooltip
+│       └── TransactionPanel.tsx  # Revenue counter + recent purchases
 ├── docs/
 │   └── screenshot.png     # Dashboard screenshot
 ├── AGENTS.md              # Full architecture guide for AI coding agents
@@ -137,7 +140,7 @@ Adding a new room takes ~4 lines of code. See [AGENTS.md](AGENTS.md) for instruc
 
 ## Roadmap
 
-- [ ] **Checkout transactions** — Animate a 💲 sign on purchase events with a dedicated transaction panel showing revenue and conversion data
+- [x] **Checkout transactions** — Floating 💲 animation on purchase events with transaction panel, revenue counter, and conversion rate
 - [ ] **Sub-rooms for page elements** — Adjoining mini-rooms for on-page drawers, modals, and alternate page modes (e.g. a "Settings Drawer" sub-room attached to the Product Catalog)
 - [ ] **A\* pathfinding** — Avatars walk between rooms instead of teleporting
 - [ ] **Session timelines** — Click an avatar to see their full journey through the site
