@@ -1,0 +1,47 @@
+name: Claude Code Review
+
+on:
+  push:
+    branches-ignore:
+      - main
+
+permissions:
+  contents: read
+  pull-requests: write
+  issues: write
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Dismiss previous Claude reviews
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Find the PR associated with this branch
+          BRANCH="${GITHUB_REF_NAME}"
+          PR_NUMBER=$(gh pr list --head "$BRANCH" --json number --jq '.[0].number' 2>/dev/null || echo "")
+
+          if [ -n "$PR_NUMBER" ]; then
+            # Find previous review comments from github-actions bot and minimize them
+            gh api "repos/${{ github.repository }}/issues/${PR_NUMBER}/comments" \
+              --jq '.[] | select(.user.login == "github-actions[bot]" and (.body | contains("Claude Code Review"))) | .id' \
+              | while read -r comment_id; do
+                gh api graphql -f query='
+                  mutation {
+                    minimizeComment(input: {subjectId: "'"$(gh api "repos/${{ github.repository }}/issues/comments/${comment_id}" --jq '.node_id')"'", classifier: OUTDATED}) {
+                      minimizedComment { isMinimized }
+                    }
+                  }'
+              done
+          fi
+
+      - uses: anthropics/claude-code-action@beta
+        with:
+          use_claude_code_app: true
+          trigger_phrase: ""
+          review_on_push: true
