@@ -4,6 +4,7 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 const app = express();
 app.use(cors());
@@ -16,6 +17,21 @@ const io = new Server(httpServer, {
         methods: ['GET', 'POST']
     }
 });
+
+// ─── Auth Config ────────────────────────────────────────────────────────────
+
+const WEBHOOK_SECRET = process.env.POSTHOG_WEBHOOK_SECRET;
+const API_KEY = process.env.POSTHOG_API_KEY;
+
+if (!WEBHOOK_SECRET) {
+    console.warn('[Auth] WARNING: POSTHOG_WEBHOOK_SECRET is not set. /api/events is in insecure dev mode.');
+} else {
+    console.log('[Auth] HMAC signature verification enabled for /api/events');
+}
+
+if (API_KEY) {
+    console.log('[Auth] API Key fallback enabled for /api/events');
+}
 
 // ─── Load room config from rooms.json ───────────────────────────────────────
 
@@ -93,6 +109,42 @@ app.get('/api/rooms', (_req, res) => {
 
 // API endpoint mimicking PostHog ingest / custom webhook
 app.post('/api/events', (req, res) => {
+    // ─── Authentication Check ───────────────────────────────────────────────
+    let isAuthorized = true;
+
+    // 1. Signature Verification (HMAC-SHA256)
+    if (WEBHOOK_SECRET) {
+        isAuthorized = false;
+        const signature = req.headers['x-posthog-signature'];
+        if (signature && typeof signature === 'string') {
+            const [version, hash] = signature.split('=');
+            if (version === 'sha256' && hash) {
+                const computedHash = crypto.createHmac('sha256', WEBHOOK_SECRET)
+                    .update(JSON.stringify(req.body))
+                    .digest('hex');
+                if (computedHash === hash) {
+                    isAuthorized = true;
+                }
+            }
+        }
+    }
+
+    // 2. API Key Fallback (Bearer Token)
+    if (!isAuthorized && API_KEY) {
+        const authHeader = req.headers['authorization'];
+        if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+            const key = authHeader.substring(7);
+            if (key === API_KEY) {
+                isAuthorized = true;
+            }
+        }
+    }
+
+    if (!isAuthorized) {
+        console.warn('[Auth] Rejected unauthorized request to /api/events');
+        return res.status(403).json({ error: 'Unauthorized: Invalid signature or API key' });
+    }
+
     const { event, properties, timestamp } = req.body;
 
     if (!properties || !properties.distinct_id) {
