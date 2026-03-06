@@ -31,11 +31,11 @@ All three processes must be running for the full experience. The frontend connec
 ## Architecture
 
 ```
-┌─────────────────┐     POST /api/events     ┌──────────────────┐     WebSocket      ┌──────────────────┐
-│  Telemetry       │ ─────────────────────▶  │    server.ts      │ ─────────────────▶ │   React Frontend  │
-│  Source           │  PostHog JSON payload    │  Express+Socket.io │  Real-time push    │   Vite dev server  │
-│  (or simulator)  │                          │  (localhost:3001)  │                    │  (localhost:5173)  │
-└─────────────────┘                          └──────────────────┘                    └──────────────────┘
+┌─────────────────┐     POST /api/events     ┌───────────────────┐     WebSocket      ┌──────────────────┐
+│  Telemetry      │ ─────────────────────▶   │    server.ts      │ ─────────────────▶ │  React Frontend  │
+│  Source         │  PostHog JSON payload    │ Express+Socket.io │  Real-time push    │  Vite dev server │
+│  (or simulator) │                          │ (localhost:3001)  │                    │ (localhost:5173) │
+└─────────────────┘                          └───────────────────┘                    └──────────────────┘
 ```
 
 ### Data Flow

@@ -77,6 +77,15 @@ curl -X POST http://localhost:3001/api/events \
 
 Or point a [PostHog webhook](https://posthog.com/docs/webhooks) directly at your server.
 
+### Production Auth
+
+For production deployments, you can secure the `/api/events` endpoint using environment variables:
+
+- `POSTHOG_WEBHOOK_SECRET`: If set, the server verifies the `X-Posthog-Signature` header (HMAC-SHA256) sent by PostHog webhooks.
+- `TELEMETRY_API_KEY`: If set, the server also accepts `Authorization: Bearer <your_api_key>` for manual event ingestion. Named `TELEMETRY_API_KEY` (not `POSTHOG_API_KEY`) to avoid clashing with PostHog's own client SDK variable.
+
+If neither is set, the server runs in insecure development mode and accepts all requests.
+
 ## Features
 
 - **Live avatar map** — Colored circles with bouncy CSS animations move between 5 rooms
@@ -156,7 +165,7 @@ All rooms are defined in [`rooms.json`](rooms.json) — edit this file to model 
 - [x] **Session timelines** — Click an avatar to see their full journey through the site
 - [ ] **Room furniture** — Add visual elements inside rooms (shopping carts, forms, etc.)
 - [ ] **Multiple floors** — Navigate between different map views for different site sections
-- [ ] **Real PostHog webhook adapter** — Production-ready integration with auth
+- [x] **Real PostHog webhook adapter** — Production-ready integration with HMAC-SHA256 signature verification and API key auth
 - [ ] **Segment / Mixpanel adapters** — Support more analytics platforms
 - [x] **Configurable room layouts** — JSON-based map definitions so anyone can model their site
 - [ ] **User search** — Find a specific user on the map

@@ -4,9 +4,16 @@ import { Server } from 'socket.io';
 import cors from 'cors';
 import fs from 'fs';
 import path from 'path';
+import crypto from 'crypto';
 
 const app = express();
 app.use(cors());
+// Use raw body parser for /api/events so HMAC is computed on the original bytes,
+// not a re-serialized JSON string (which can differ in key order / whitespace).
+app.use('/api/events', express.raw({ type: 'application/json' }));
+// express.json() runs globally but skips /api/events — express.raw() above consumes
+// that route's body first and sets req._body = true, causing the JSON parser to no-op.
+// This ordering is intentional: keep raw bytes intact for HMAC verification.
 app.use(express.json());
 
 const httpServer = createServer(app);
@@ -16,6 +23,18 @@ const io = new Server(httpServer, {
         methods: ['GET', 'POST']
     }
 });
+
+// ─── Auth Config ────────────────────────────────────────────────────────────
+
+const WEBHOOK_SECRET = process.env.POSTHOG_WEBHOOK_SECRET;
+const API_KEY = process.env.TELEMETRY_API_KEY;
+
+if (!WEBHOOK_SECRET && !API_KEY) {
+    console.warn('[Auth] WARNING: No auth configured. /api/events is in insecure dev mode.');
+} else {
+    if (WEBHOOK_SECRET) console.log('[Auth] HMAC signature verification enabled for /api/events');
+    if (API_KEY) console.log('[Auth] API Key auth enabled for /api/events');
+}
 
 // ─── Load room config from rooms.json ───────────────────────────────────────
 
@@ -93,7 +112,70 @@ app.get('/api/rooms', (_req, res) => {
 
 // API endpoint mimicking PostHog ingest / custom webhook
 app.post('/api/events', (req, res) => {
-    const { event, properties, timestamp } = req.body;
+    // ─── Authentication Check ───────────────────────────────────────────────
+    // Open only when neither auth method is configured (dev mode).
+    // If either is set, all requests must pass at least one check.
+    let isAuthorized = !WEBHOOK_SECRET && !API_KEY;
+
+    // req.body is a raw Buffer when Content-Type is application/json (express.raw above).
+    // For any other content type (or missing body), express.raw leaves req.body undefined —
+    // guard early to avoid TypeError inside HMAC / JSON.parse.
+    const rawBody = req.body;
+    if (!Buffer.isBuffer(rawBody)) {
+        console.warn('[Auth] Rejected request to /api/events — missing or non-JSON body');
+        return res.status(401).json({ error: 'Unauthorized: Expected application/json body' });
+    }
+
+    // 1. Signature Verification (HMAC-SHA256 on raw bytes — timing-safe)
+    if (WEBHOOK_SECRET) {
+        const signature = req.headers['x-posthog-signature'];
+        if (signature && typeof signature === 'string') {
+            const [version, hash] = signature.split('=');
+            if (version === 'sha256' && hash) {
+                try {
+                    const computedHash = crypto.createHmac('sha256', WEBHOOK_SECRET)
+                        .update(rawBody)
+                        .digest('hex');
+                    if (crypto.timingSafeEqual(Buffer.from(computedHash), Buffer.from(hash))) {
+                        isAuthorized = true;
+                    }
+                } catch {
+                    // timingSafeEqual throws if buffers differ in length — treat as mismatch
+                }
+            }
+        }
+    }
+
+    // 2. API Key Fallback (Bearer Token) — independent of WEBHOOK_SECRET
+    if (!isAuthorized && API_KEY) {
+        const authHeader = req.headers['authorization'];
+        if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
+            const key = authHeader.substring(7);
+            try {
+                // Use timing-safe comparison to prevent side-channel attacks
+                if (crypto.timingSafeEqual(Buffer.from(key), Buffer.from(API_KEY))) {
+                    isAuthorized = true;
+                }
+            } catch {
+                // timingSafeEqual throws on length mismatch — treat as invalid key
+            }
+        }
+    }
+
+    if (!isAuthorized) {
+        console.warn('[Auth] Rejected unauthorized request to /api/events');
+        return res.status(401).json({ error: 'Unauthorized: Invalid signature or API key' });
+    }
+
+    // Parse the raw body now that auth has passed
+    let parsedBody: any;
+    try {
+        parsedBody = JSON.parse(rawBody.toString());
+    } catch {
+        return res.status(400).json({ error: 'Invalid JSON body' });
+    }
+
+    const { event, properties, timestamp } = parsedBody;
 
     if (!properties || !properties.distinct_id) {
         return res.status(400).json({ error: 'Missing properties.distinct_id' });
