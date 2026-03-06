@@ -11,6 +11,9 @@ app.use(cors());
 // Use raw body parser for /api/events so HMAC is computed on the original bytes,
 // not a re-serialized JSON string (which can differ in key order / whitespace).
 app.use('/api/events', express.raw({ type: 'application/json' }));
+// express.json() runs globally but skips /api/events — express.raw() above consumes
+// that route's body first and sets req._body = true, causing the JSON parser to no-op.
+// This ordering is intentional: keep raw bytes intact for HMAC verification.
 app.use(express.json());
 
 const httpServer = createServer(app);
@@ -114,8 +117,14 @@ app.post('/api/events', (req, res) => {
     // If either is set, all requests must pass at least one check.
     let isAuthorized = !WEBHOOK_SECRET && !API_KEY;
 
-    // req.body is a raw Buffer here (express.raw middleware applied above)
-    const rawBody = req.body as Buffer;
+    // req.body is a raw Buffer when Content-Type is application/json (express.raw above).
+    // For any other content type (or missing body), express.raw leaves req.body undefined —
+    // guard early to avoid TypeError inside HMAC / JSON.parse.
+    const rawBody = req.body;
+    if (!Buffer.isBuffer(rawBody)) {
+        console.warn('[Auth] Rejected request to /api/events — missing or non-JSON body');
+        return res.status(401).json({ error: 'Unauthorized: Expected application/json body' });
+    }
 
     // 1. Signature Verification (HMAC-SHA256 on raw bytes — timing-safe)
     if (WEBHOOK_SECRET) {
@@ -123,10 +132,10 @@ app.post('/api/events', (req, res) => {
         if (signature && typeof signature === 'string') {
             const [version, hash] = signature.split('=');
             if (version === 'sha256' && hash) {
-                const computedHash = crypto.createHmac('sha256', WEBHOOK_SECRET)
-                    .update(rawBody)
-                    .digest('hex');
                 try {
+                    const computedHash = crypto.createHmac('sha256', WEBHOOK_SECRET)
+                        .update(rawBody)
+                        .digest('hex');
                     if (crypto.timingSafeEqual(Buffer.from(computedHash), Buffer.from(hash))) {
                         isAuthorized = true;
                     }
@@ -142,8 +151,13 @@ app.post('/api/events', (req, res) => {
         const authHeader = req.headers['authorization'];
         if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
             const key = authHeader.substring(7);
-            if (key === API_KEY) {
-                isAuthorized = true;
+            try {
+                // Use timing-safe comparison to prevent side-channel attacks
+                if (crypto.timingSafeEqual(Buffer.from(key), Buffer.from(API_KEY))) {
+                    isAuthorized = true;
+                }
+            } catch {
+                // timingSafeEqual throws on length mismatch — treat as invalid key
             }
         }
     }
