@@ -2,9 +2,9 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
-import crypto from 'crypto';
 
 const app = express();
 app.use(cors());
@@ -35,6 +35,12 @@ if (!WEBHOOK_SECRET && !API_KEY) {
     if (WEBHOOK_SECRET) console.log('[Auth] HMAC signature verification enabled for /api/events');
     if (API_KEY) console.log('[Auth] API Key auth enabled for /api/events');
 }
+
+const OTEL_BEARER_TOKEN = process.env.OTEL_BEARER_TOKEN;
+if (!OTEL_BEARER_TOKEN) {
+    console.warn('[OTel] Warning: OTEL_BEARER_TOKEN not set. OTLP endpoint is unauthenticated.');
+}
+
 
 // ─── Load room config from rooms.json ───────────────────────────────────────
 
@@ -102,6 +108,139 @@ io.on('connection', (socket) => {
         console.log('Client disconnected:', socket.id);
     });
 });
+
+// ─── Core Logic ─────────────────────────────────────────────────────────────
+
+function processEvent(data: {
+    event: string;
+    userId: string;
+    url: string;
+    name?: string;
+    browser?: string;
+    os?: string;
+    properties: Record<string, any>;
+}) {
+    const { event, userId, url, properties } = data;
+    const name = data.name || properties.name || `User-${userId.substring(0, 4)}`;
+
+    // Map URL to room using config-driven routing
+    let room = roomConfig.rooms[0]?.id || 'login'; // fallback to first room
+    for (const route of URL_ROUTES) {
+        if (route.exact) {
+            // For exact match, check if the URL path is exactly the pattern
+            try {
+                const urlPath = new URL(url).pathname;
+                if (urlPath === route.pattern) { room = route.roomId; break; }
+            } catch { /* not a valid URL, skip */ }
+        } else {
+            if (url.includes(route.pattern)) { room = route.roomId; break; }
+        }
+    }
+
+    // Detect sub-room events (take priority over parent room)
+    for (const subEvent of SUB_ROOM_EVENTS) {
+        if (event === subEvent.eventType && properties[subEvent.matchKey] === subEvent.matchValue) {
+            room = subEvent.roomId;
+            break;
+        }
+    }
+
+    // Detect purchase events (only if transactions enabled)
+    const txEnabled = roomConfig.enableTransactions !== false;
+    const isPurchase = txEnabled && (event === 'order_completed' || event === '$purchase');
+    const purchaseAmount = isPurchase ? (properties.$amount || properties.revenue || 0) : undefined;
+    const isSubRoom = SUB_ROOM_EVENTS.some(e => e.eventType === event);
+    const actionStr = isPurchase ? 'Purchase'
+        : isSubRoom ? (properties.drawer || properties.modal || properties.form || 'Interaction')
+            : event === '$pageview' ? 'Page View'
+                : properties.interaction_type || (event && event !== 'custom_interaction' ? event : 'Active');
+
+    // Generate a consistent color based on the distinct_id
+    const hashCode = userId.split('').reduce((a: number, b: string) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
+    const colors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
+    const userColor = colors[Math.abs(hashCode) % colors.length];
+
+    // Calculate position inside the target room
+    const pos = getRandomPositionInRoom(room);
+    const roomInfo = ROOM_COORDS[room] || ROOM_COORDS[roomConfig.rooms[0]?.id || 'login'];
+
+    // Update or create user
+    const browser = data.browser || properties.$browser || 'Unknown';
+    const os = data.os || properties.$os || 'Unknown';
+
+    activeUsers[userId] = {
+        id: userId,
+        name: name,
+        x: pos.x,
+        y: pos.y,
+        activeRoom: roomInfo.label,
+        action: actionStr,
+        status: 'moving',
+        color: userColor,
+        lastUpdate: Date.now(),
+        browser,
+        os,
+        currentUrl: url,
+        purchaseAmount: purchaseAmount
+    };
+
+    console.log(`[Event] ${name} (${browser}/${os}) -> ${roomInfo.label} (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}) | ${actionStr}${isPurchase ? ` $${purchaseAmount?.toFixed(2)}` : ''}`);
+
+    // Store history entry
+    if (!userHistory[userId]) userHistory[userId] = [];
+    userHistory[userId].unshift({
+        room: roomInfo.label,
+        action: actionStr,
+        time: new Date().toLocaleTimeString(),
+        url: url,
+        isPurchase,
+        amount: purchaseAmount,
+    });
+    if (userHistory[userId].length > 50) userHistory[userId].pop();
+
+    // Broadcast the update to all connected React clients
+    io.emit('userUpdate', activeUsers[userId]);
+    io.emit('userHistory', { userId, history: userHistory[userId] });
+
+    // Emit transaction event for purchases
+    if (isPurchase && purchaseAmount) {
+        io.emit('transaction', {
+            id: `txn_${userId}_${Date.now()}`,
+            userId,
+            userName: name,
+            amount: purchaseAmount,
+            color: userColor,
+            time: new Date().toLocaleTimeString()
+        });
+    }
+}
+
+function getRandomPositionInRoom(roomId: string) {
+    const room = ROOM_COORDS[roomId] || ROOM_COORDS[roomConfig.rooms[0]?.id || 'login'];
+    const pad = 1;
+    return {
+        x: room.x + pad + Math.random() * (room.w - pad * 2),
+        y: room.y + pad + Math.random() * (room.h - pad * 2)
+    };
+}
+
+function parseUA(ua: string) {
+    let browser = 'Unknown';
+    let os = 'Unknown';
+
+    if (ua.includes('Firefox')) browser = 'Firefox';
+    else if (ua.includes('Chrome')) browser = 'Chrome';
+    else if (ua.includes('Safari')) browser = 'Safari';
+    else if (ua.includes('Edge')) browser = 'Edge';
+
+    if (ua.includes('Windows')) os = 'Windows';
+    else if (ua.includes('Macintosh')) os = 'Mac OS X';
+    else if (ua.includes('Linux')) os = 'Linux';
+    else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+    else if (ua.includes('Android')) os = 'Android';
+
+    return { browser, os };
+}
 
 // ─── REST endpoints ─────────────────────────────────────────────────────────
 
@@ -175,115 +314,92 @@ app.post('/api/events', (req, res) => {
         return res.status(400).json({ error: 'Invalid JSON body' });
     }
 
-    const { event, properties, timestamp } = parsedBody;
+    const { event, properties } = parsedBody;
 
     if (!properties || !properties.distinct_id) {
         return res.status(400).json({ error: 'Missing properties.distinct_id' });
     }
 
-    const userId = properties.distinct_id;
-    const url = properties.$current_url || '';
-    const name = properties.name || `User-${userId.substring(0, 4)}`;
-
-    // Map URL to room using config-driven routing
-    let room = roomConfig.rooms[0]?.id || 'login'; // fallback to first room
-    for (const route of URL_ROUTES) {
-        if (route.exact) {
-            // For exact match, check if the URL path is exactly the pattern
-            try {
-                const urlPath = new URL(url).pathname;
-                if (urlPath === route.pattern) { room = route.roomId; break; }
-            } catch { /* not a valid URL, skip */ }
-        } else {
-            if (url.includes(route.pattern)) { room = route.roomId; break; }
-        }
-    }
-
-    // Detect sub-room events (take priority over parent room)
-    for (const subEvent of SUB_ROOM_EVENTS) {
-        if (event === subEvent.eventType && properties[subEvent.matchKey] === subEvent.matchValue) {
-            room = subEvent.roomId;
-            break;
-        }
-    }
-
-    // Detect purchase events (only if transactions enabled)
-    const txEnabled = roomConfig.enableTransactions !== false;
-    const isPurchase = txEnabled && (event === 'order_completed' || event === '$purchase');
-    const purchaseAmount = isPurchase ? (properties.$amount || properties.revenue || 0) : undefined;
-    const isSubRoom = SUB_ROOM_EVENTS.some(e => e.eventType === event);
-    const actionStr = isPurchase ? 'Purchase'
-        : isSubRoom ? (properties.drawer || properties.modal || properties.form || 'Interaction')
-            : event === '$pageview' ? 'Page View'
-                : properties.interaction_type || 'Active';
-
-    // Generate a consistent color based on the distinct_id
-    const hashCode = userId.split('').reduce((a: number, b: string) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
-    const colors = ['#3b82f6', '#8b5cf6', '#10b981', '#f59e0b', '#ef4444', '#ec4899'];
-    const userColor = colors[Math.abs(hashCode) % colors.length];
-
-    // Calculate position inside the target room
-    const pos = getRandomPositionInRoom(room);
-    const roomInfo = ROOM_COORDS[room] || ROOM_COORDS[roomConfig.rooms[0]?.id || 'login'];
-
-    // Update or create user
-    activeUsers[userId] = {
-        id: userId,
-        name: name,
-        x: pos.x,
-        y: pos.y,
-        activeRoom: roomInfo.label,
-        action: actionStr,
-        status: 'moving',
-        color: userColor,
-        lastUpdate: Date.now(),
-        browser: properties.$browser || 'Unknown',
-        os: properties.$os || 'Unknown',
-        currentUrl: url,
-        purchaseAmount: purchaseAmount
-    };
-
-    console.log(`[Event] ${name} -> ${roomInfo.label} (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}) | ${actionStr}${isPurchase ? ` $${purchaseAmount?.toFixed(2)}` : ''}`);
-
-    // Store history entry
-    if (!userHistory[userId]) userHistory[userId] = [];
-    userHistory[userId].unshift({
-        room: roomInfo.label,
-        action: actionStr,
-        time: new Date().toLocaleTimeString(),
-        url: url,
-        isPurchase,
-        amount: purchaseAmount,
+    processEvent({
+        event: event || '$pageview',
+        userId: properties.distinct_id,
+        url: properties.$current_url || '',
+        properties
     });
-    if (userHistory[userId].length > 50) userHistory[userId].pop();
-
-    // Broadcast the update to all connected React clients
-    io.emit('userUpdate', activeUsers[userId]);
-    io.emit('userHistory', { userId, history: userHistory[userId] });
-
-    // Emit transaction event for purchases
-    if (isPurchase && purchaseAmount) {
-        io.emit('transaction', {
-            id: `txn_${userId}_${Date.now()}`,
-            userId,
-            userName: name,
-            amount: purchaseAmount,
-            color: userColor,
-            time: new Date().toLocaleTimeString()
-        });
-    }
 
     res.status(200).json({ success: true });
 });
 
-function getRandomPositionInRoom(roomId: string) {
-    const room = ROOM_COORDS[roomId] || ROOM_COORDS[roomConfig.rooms[0]?.id || 'login'];
-    const pad = 1;
-    return {
-        x: room.x + pad + Math.random() * (room.w - pad * 2),
-        y: room.y + pad + Math.random() * (room.h - pad * 2)
-    };
-}
+// OpenTelemetry (OTLP) Adapter
+app.post('/api/otlp/v1/traces', (req, res) => {
+    // Auth check
+    if (OTEL_BEARER_TOKEN) {
+        const authHeader = req.headers.authorization;
+        const expected = Buffer.from(`Bearer ${OTEL_BEARER_TOKEN}`);
+        const actual = Buffer.from(authHeader ?? '');
+        if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+    }
+
+    const { resourceSpans } = req.body;
+    if (!resourceSpans || !Array.isArray(resourceSpans)) {
+        return res.status(200).json({});
+    }
+
+    try {
+        for (const rs of resourceSpans) {
+            const resourceAttrs: Record<string, any> = {};
+            if (rs.resource?.attributes) {
+                for (const attr of rs.resource.attributes) {
+                    const val = attr.value ?? {};
+                    resourceAttrs[attr.key] = val.stringValue ?? val.intValue ?? val.boolValue ?? val.doubleValue;
+                }
+            }
+
+            if (rs.scopeSpans) {
+                for (const ss of rs.scopeSpans) {
+                    if (ss.spans) {
+                        for (const span of ss.spans) {
+                            const spanAttrs: Record<string, any> = {};
+                            if (span.attributes) {
+                                for (const attr of span.attributes) {
+                                    const val = attr.value ?? {};
+                                    spanAttrs[attr.key] = val.stringValue ?? val.intValue ?? val.boolValue ?? val.doubleValue;
+                                }
+                            }
+
+                            const traceId = span.traceId;
+                            const userId = spanAttrs['user.id'] || spanAttrs['enduser.id'] || resourceAttrs['user.id'] || resourceAttrs['enduser.id'] || traceId;
+                            if (!spanAttrs['user.id'] && !spanAttrs['enduser.id'] && !resourceAttrs['user.id'] && !resourceAttrs['enduser.id']) {
+                                console.debug(`[OTel] No user.id found in span or resource attributes — falling back to traceId: ${traceId}`);
+                            }
+                            const userName = spanAttrs['user.name'] || spanAttrs['enduser.name'] || resourceAttrs['user.name'] || resourceAttrs['enduser.name'] || (traceId ? traceId.substring(0, 6) : 'Unknown');
+                            const url = spanAttrs['http.url'] || spanAttrs['url.full'] || spanAttrs['http.target'] || spanAttrs['url.path'] || '';
+                            const ua = spanAttrs['http.user_agent'] || resourceAttrs['http.user_agent'] || '';
+                            const { browser, os } = parseUA(ua);
+
+                            processEvent({
+                                event: span.name,
+                                userId,
+                                name: userName,
+                                url,
+                                browser,
+                                os,
+                                properties: { ...resourceAttrs, ...spanAttrs }
+                            });
+                        }
+                    }
+                }
+            }
+        }
+    } catch (err) {
+        console.error('[OTel] Failed to process trace payload:', err);
+        return res.status(400).json({ error: 'Invalid trace payload' });
+    }
+
+    res.status(200).json({});
+});
 
 // Clean up stale users (no activity for 2 minutes)
 setInterval(() => {

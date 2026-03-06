@@ -86,6 +86,51 @@ For production deployments, you can secure the `/api/events` endpoint using envi
 
 If neither is set, the server runs in insecure development mode and accepts all requests.
 
+### OpenTelemetry (OTLP)
+
+You can also pipe OpenTelemetry JSON traces directly to the OTLP-compatible endpoint. This is useful for backend services or web apps already instrumented with OTel:
+
+```bash
+curl -X POST http://localhost:3001/api/otlp/v1/traces \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_secret_token_here" \
+  -d '{
+    "resourceSpans": [{
+      "resource": {
+        "attributes": [
+          { "key": "service.name", "value": { "stringValue": "my-website" } },
+          { "key": "http.user_agent", "value": { "stringValue": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0.0.0 Safari/537.36" } }
+        ]
+      },
+      "scopeSpans": [{
+        "spans": [{
+          "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "spanId": "00f067aa0ba902b7",
+          "name": "Page View: /products",
+          "attributes": [
+            { "key": "http.url", "value": { "stringValue": "https://yoursite.com/products" } },
+            { "key": "user.id", "value": { "stringValue": "user_abc123" } },
+            { "key": "user.name", "value": { "stringValue": "Jane Doe" } }
+          ]
+        }]
+      }]
+    }]
+  }'
+```
+
+If `OTEL_BEARER_TOKEN` is set in your environment, the `Authorization` header is required.
+
+> **Protocol note:** This endpoint only supports **JSON over HTTP** (`Content-Type: application/json`). Most OTel SDKs default to protobuf over gRPC. Configure your SDK to use the JSON/HTTP exporter:
+> ```
+> OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+> ```
+
+> **Endpoint note:** The OTLP path is `/api/otlp/v1/traces` — not the bare `/v1/traces` used by standard collectors. You must include the `/api/otlp` prefix when configuring your exporter:
+> ```
+> OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3001/api/otlp
+> ```
+
+
 ## Features
 
 - **Live avatar map** — Colored circles with bouncy CSS animations move between 5 rooms
@@ -166,6 +211,7 @@ All rooms are defined in [`rooms.json`](rooms.json) — edit this file to model 
 - [ ] **Room furniture** — Add visual elements inside rooms (shopping carts, forms, etc.)
 - [ ] **Multiple floors** — Navigate between different map views for different site sections
 - [x] **Real PostHog webhook adapter** — Production-ready integration with HMAC-SHA256 signature verification and API key auth
+- [x] **OpenTelemetry / OTLP adapter** — Support for OTel JSON traces directly into the dashboard
 - [ ] **Segment / Mixpanel adapters** — Support more analytics platforms
 - [x] **Configurable room layouts** — JSON-based map definitions so anyone can model their site
 - [ ] **User search** — Find a specific user on the map
