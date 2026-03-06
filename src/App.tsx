@@ -6,7 +6,8 @@ import type { UserState } from './components/Avatar';
 import type { RoomData } from './components/Room';
 import { TransactionPanel, type Transaction } from './components/TransactionPanel';
 import { SessionTimeline, type HistoryEntry } from './components/SessionTimeline';
-import { Activity, ArrowRight } from 'lucide-react';
+import { Activity, ArrowRight, Clock } from 'lucide-react';
+import { ReplayControls } from './components/ReplayControls';
 
 // Connect to the local backend server
 const socket = io('http://localhost:3001');
@@ -29,6 +30,8 @@ interface ConnectionDef {
 
 const App: React.FC = () => {
   const [users, setUsers] = useState<UserState[]>([]);
+  const [replayUsers, setReplayUsers] = useState<UserState[]>([]);
+  const [replayMode, setReplayMode] = useState(false);
   const [isConnected, setIsConnected] = useState(socket.connected);
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
@@ -118,11 +121,13 @@ const App: React.FC = () => {
     };
   }, []);
 
-  const selectedUser = selectedUserId ? users.find(u => u.id === selectedUserId) : null;
+  const selectedUser = selectedUserId ? (replayMode ? replayUsers : users).find(u => u.id === selectedUserId) : null;
 
   const handleAvatarClick = (userId: string) => {
     setSelectedUserId(prev => prev === userId ? null : userId);
   };
+
+  const displayUsers = replayMode ? replayUsers : users;
 
   return (
     <div className="app-container">
@@ -139,41 +144,92 @@ const App: React.FC = () => {
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <h1 style={{
-            fontSize: '1.4rem',
-            margin: 0,
-            background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-          }}>
-            Live Actions
-          </h1>
-          <div style={{
-            padding: '4px 8px',
-            borderRadius: '12px',
-            backgroundColor: isConnected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
-            color: isConnected ? 'var(--accent-green)' : '#ef4444',
-            fontSize: '0.7rem',
-            fontWeight: 600,
-            animation: isConnected ? 'pulse 2s infinite' : 'none'
-          }}>
-            {isConnected ? '● LIVE' : '○ OFFLINE'}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <h1 style={{
+              fontSize: '1.4rem',
+              margin: 0,
+              background: 'linear-gradient(135deg, var(--accent-blue), var(--accent-purple))',
+              WebkitBackgroundClip: 'text',
+              WebkitTextFillColor: 'transparent',
+            }}>
+              Live Actions
+            </h1>
+            {!replayMode && (
+              <button 
+                onClick={() => setReplayMode(true)}
+                style={{
+                  padding: '4px 10px',
+                  borderRadius: '8px',
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  backgroundColor: 'rgba(255,255,255,0.05)',
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.7rem',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'}
+              >
+                <Clock size={12} />
+                Replay
+              </button>
+            )}
           </div>
+          {replayMode ? (
+            <div style={{
+              padding: '4px 8px',
+              borderRadius: '12px',
+              backgroundColor: 'rgba(245, 158, 11, 0.2)',
+              color: 'var(--accent-gold)',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              animation: 'pulse 2s infinite'
+            }}>
+              ● REPLAY
+            </div>
+          ) : (
+            <div style={{
+              padding: '4px 8px',
+              borderRadius: '12px',
+              backgroundColor: isConnected ? 'rgba(16, 185, 129, 0.2)' : 'rgba(239, 68, 68, 0.2)',
+              color: isConnected ? 'var(--accent-green)' : '#ef4444',
+              fontSize: '0.7rem',
+              fontWeight: 600,
+              animation: isConnected ? 'pulse 2s infinite' : 'none'
+            }}>
+              {isConnected ? '● LIVE' : '○ OFFLINE'}
+            </div>
+          )}
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginTop: '10px' }}>
           <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem' }}>
-            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{users.length}</span> users active
+            <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{displayUsers.length}</span> users {replayMode ? 'visible' : 'active'}
           </p>
         </div>
       </header>
+
+      {/* Replay Controls */}
+      {replayMode && (
+        <ReplayControls 
+          onStateUpdate={setReplayUsers} 
+          onClose={() => {
+            setReplayMode(false);
+            setReplayUsers([]);
+          }} 
+        />
+      )}
 
       {/* Transaction Panel - Bottom Left (only if enabled) */}
       {enableTransactions && (
         <TransactionPanel
           transactions={transactions}
           totalRevenue={totalRevenue}
-          totalUsers={users.length}
+          totalUsers={displayUsers.length}
         />
       )}
 
@@ -242,7 +298,7 @@ const App: React.FC = () => {
 
       {/* Main Game Map */}
       <GameMap
-        users={users}
+        users={displayUsers}
         rooms={rooms}
         connections={connections}
         onAvatarClick={handleAvatarClick}
