@@ -66,6 +66,13 @@ URL_ROUTES.sort((a, b) => {
 
 console.log(`[Config] Loaded ${roomConfig.rooms.length} rooms, ${SUB_ROOM_EVENTS.length} sub-room events, ${URL_ROUTES.length} URL routes`);
 
+// ─── OTel Auth Config ───────────────────────────────────────────────────────
+
+const OTEL_BEARER_TOKEN = process.env.OTEL_BEARER_TOKEN;
+if (!OTEL_BEARER_TOKEN) {
+    console.warn('[Otel] Warning: OTEL_BEARER_TOKEN not set. OTLP endpoint is unauthenticated.');
+}
+
 // ─── State storage ──────────────────────────────────────────────────────────
 
 const activeUsers: Record<string, any> = {};
@@ -84,24 +91,19 @@ io.on('connection', (socket) => {
     });
 });
 
-// ─── REST endpoints ─────────────────────────────────────────────────────────
+// ─── Core Logic ─────────────────────────────────────────────────────────────
 
-// Serve room config to frontend
-app.get('/api/rooms', (_req, res) => {
-    res.json(roomConfig);
-});
-
-// API endpoint mimicking PostHog ingest / custom webhook
-app.post('/api/events', (req, res) => {
-    const { event, properties, timestamp } = req.body;
-
-    if (!properties || !properties.distinct_id) {
-        return res.status(400).json({ error: 'Missing properties.distinct_id' });
-    }
-
-    const userId = properties.distinct_id;
-    const url = properties.$current_url || '';
-    const name = properties.name || `User-${userId.substring(0, 4)}`;
+function processEvent(data: {
+    event: string;
+    userId: string;
+    url: string;
+    name?: string;
+    browser?: string;
+    os?: string;
+    properties: Record<string, any>;
+}) {
+    const { event, userId, url, properties } = data;
+    const name = data.name || properties.name || `User-${userId.substring(0, 4)}`;
 
     // Map URL to room using config-driven routing
     let room = roomConfig.rooms[0]?.id || 'login'; // fallback to first room
@@ -133,7 +135,7 @@ app.post('/api/events', (req, res) => {
     const actionStr = isPurchase ? 'Purchase'
         : isSubRoom ? (properties.drawer || properties.modal || properties.form || 'Interaction')
             : event === '$pageview' ? 'Page View'
-                : properties.interaction_type || 'Active';
+                : properties.interaction_type || (event && event !== 'custom_interaction' ? event : 'Active');
 
     // Generate a consistent color based on the distinct_id
     const hashCode = userId.split('').reduce((a: number, b: string) => { a = ((a << 5) - a) + b.charCodeAt(0); return a & a }, 0);
@@ -145,6 +147,9 @@ app.post('/api/events', (req, res) => {
     const roomInfo = ROOM_COORDS[room] || ROOM_COORDS[roomConfig.rooms[0]?.id || 'login'];
 
     // Update or create user
+    const browser = data.browser || properties.$browser || 'Unknown';
+    const os = data.os || properties.$os || 'Unknown';
+
     activeUsers[userId] = {
         id: userId,
         name: name,
@@ -155,13 +160,13 @@ app.post('/api/events', (req, res) => {
         status: 'moving',
         color: userColor,
         lastUpdate: Date.now(),
-        browser: properties.$browser || 'Unknown',
-        os: properties.$os || 'Unknown',
+        browser,
+        os,
         currentUrl: url,
         purchaseAmount: purchaseAmount
     };
 
-    console.log(`[Event] ${name} -> ${roomInfo.label} (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}) | ${actionStr}${isPurchase ? ` $${purchaseAmount?.toFixed(2)}` : ''}`);
+    console.log(`[Event] ${name} (${browser}/${os}) -> ${roomInfo.label} (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}) | ${actionStr}${isPurchase ? ` $${purchaseAmount?.toFixed(2)}` : ''}`);
 
     // Store history entry
     if (!userHistory[userId]) userHistory[userId] = [];
@@ -190,9 +195,7 @@ app.post('/api/events', (req, res) => {
             time: new Date().toLocaleTimeString()
         });
     }
-
-    res.status(200).json({ success: true });
-});
+}
 
 function getRandomPositionInRoom(roomId: string) {
     const room = ROOM_COORDS[roomId] || ROOM_COORDS[roomConfig.rooms[0]?.id || 'login'];
@@ -202,6 +205,110 @@ function getRandomPositionInRoom(roomId: string) {
         y: room.y + pad + Math.random() * (room.h - pad * 2)
     };
 }
+
+function parseUA(ua: string) {
+    let browser = 'Unknown';
+    let os = 'Unknown';
+
+    if (ua.includes('Firefox')) browser = 'Firefox';
+    else if (ua.includes('Chrome')) browser = 'Chrome';
+    else if (ua.includes('Safari')) browser = 'Safari';
+    else if (ua.includes('Edge')) browser = 'Edge';
+
+    if (ua.includes('Windows')) os = 'Windows';
+    else if (ua.includes('Macintosh')) os = 'Mac OS X';
+    else if (ua.includes('Linux')) os = 'Linux';
+    else if (ua.includes('iPhone') || ua.includes('iPad')) os = 'iOS';
+    else if (ua.includes('Android')) os = 'Android';
+
+    return { browser, os };
+}
+
+// ─── REST endpoints ─────────────────────────────────────────────────────────
+
+// Serve room config to frontend
+app.get('/api/rooms', (_req, res) => {
+    res.json(roomConfig);
+});
+
+// API endpoint mimicking PostHog ingest / custom webhook
+app.post('/api/events', (req, res) => {
+    const { event, properties } = req.body;
+
+    if (!properties || !properties.distinct_id) {
+        return res.status(400).json({ error: 'Missing properties.distinct_id' });
+    }
+
+    processEvent({
+        event: event || '$pageview',
+        userId: properties.distinct_id,
+        url: properties.$current_url || '',
+        properties
+    });
+
+    res.status(200).json({ success: true });
+});
+
+// OpenTelemetry (OTLP) Adapter
+app.post('/api/otlp/v1/traces', (req, res) => {
+    // Auth check
+    if (OTEL_BEARER_TOKEN) {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || authHeader !== `Bearer ${OTEL_BEARER_TOKEN}`) {
+            return res.status(401).json({ error: 'Unauthorized' });
+        }
+    }
+
+    const { resourceSpans } = req.body;
+    if (!resourceSpans || !Array.isArray(resourceSpans)) {
+        return res.status(200).json({});
+    }
+
+    for (const rs of resourceSpans) {
+        const resourceAttrs: Record<string, any> = {};
+        if (rs.resource?.attributes) {
+            for (const attr of rs.resource.attributes) {
+                const val = attr.value;
+                resourceAttrs[attr.key] = val.stringValue ?? val.intValue ?? val.boolValue ?? val.doubleValue;
+            }
+        }
+
+        if (rs.scopeSpans) {
+            for (const ss of rs.scopeSpans) {
+                if (ss.spans) {
+                    for (const span of ss.spans) {
+                        const spanAttrs: Record<string, any> = {};
+                        if (span.attributes) {
+                            for (const attr of span.attributes) {
+                                const val = attr.value;
+                                spanAttrs[attr.key] = val.stringValue ?? val.intValue ?? val.boolValue ?? val.doubleValue;
+                            }
+                        }
+
+                        const traceId = span.traceId;
+                        const userId = spanAttrs['user.id'] || spanAttrs['enduser.id'] || resourceAttrs['user.id'] || resourceAttrs['enduser.id'] || traceId;
+                        const userName = spanAttrs['user.name'] || spanAttrs['enduser.name'] || resourceAttrs['user.name'] || resourceAttrs['enduser.name'] || (traceId ? traceId.substring(0, 6) : 'Unknown');
+                        const url = spanAttrs['http.url'] || spanAttrs['http.target'] || '';
+                        const ua = spanAttrs['http.user_agent'] || resourceAttrs['http.user_agent'] || '';
+                        const { browser, os } = parseUA(ua);
+
+                        processEvent({
+                            event: span.name,
+                            userId,
+                            name: userName,
+                            url,
+                            browser,
+                            os,
+                            properties: { ...resourceAttrs, ...spanAttrs }
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    res.status(200).json({});
+});
 
 // Clean up stale users (no activity for 2 minutes)
 setInterval(() => {

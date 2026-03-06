@@ -77,6 +77,40 @@ curl -X POST http://localhost:3001/api/events \
 
 Or point a [PostHog webhook](https://posthog.com/docs/webhooks) directly at your server.
 
+### OpenTelemetry (OTLP)
+
+You can also pipe OpenTelemetry JSON traces directly to the OTLP-compatible endpoint. This is useful for backend services or web apps already instrumented with OTel:
+
+```bash
+curl -X POST http://localhost:3001/api/otlp/v1/traces \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer your_secret_token_here" \
+  -d '{
+    "resourceSpans": [{
+      "resource": {
+        "attributes": [
+          { "key": "service.name", "value": { "stringValue": "my-website" } },
+          { "key": "http.user_agent", "value": { "stringValue": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) Chrome/120.0.0.0 Safari/537.36" } }
+        ]
+      },
+      "scopeSpans": [{
+        "spans": [{
+          "traceId": "4bf92f3577b34da6a3ce929d0e0e4736",
+          "spanId": "00f067aa0ba902b7",
+          "name": "Page View: /products",
+          "attributes": [
+            { "key": "http.url", "value": { "stringValue": "https://yoursite.com/products" } },
+            { "key": "user.id", "value": { "stringValue": "user_abc123" } },
+            { "key": "user.name", "value": { "stringValue": "Jane Doe" } }
+          ]
+        }]
+      }]
+    }]
+  }'
+```
+
+If `OTEL_BEARER_TOKEN` is set in your environment, the `Authorization` header is required.
+
 ## Features
 
 - **Live avatar map** — Colored circles with bouncy CSS animations move between 5 rooms
@@ -157,6 +191,7 @@ All rooms are defined in [`rooms.json`](rooms.json) — edit this file to model 
 - [ ] **Room furniture** — Add visual elements inside rooms (shopping carts, forms, etc.)
 - [ ] **Multiple floors** — Navigate between different map views for different site sections
 - [ ] **Real PostHog webhook adapter** — Production-ready integration with auth
+- [x] **OpenTelemetry / OTLP adapter** — Support for OTel JSON traces directly into the dashboard
 - [ ] **Segment / Mixpanel adapters** — Support more analytics platforms
 - [x] **Configurable room layouts** — JSON-based map definitions so anyone can model their site
 - [ ] **User search** — Find a specific user on the map
