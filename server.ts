@@ -8,6 +8,9 @@ import crypto from 'crypto';
 
 const app = express();
 app.use(cors());
+// Use raw body parser for /api/events so HMAC is computed on the original bytes,
+// not a re-serialized JSON string (which can differ in key order / whitespace).
+app.use('/api/events', express.raw({ type: 'application/json' }));
 app.use(express.json());
 
 const httpServer = createServer(app);
@@ -21,16 +24,13 @@ const io = new Server(httpServer, {
 // ─── Auth Config ────────────────────────────────────────────────────────────
 
 const WEBHOOK_SECRET = process.env.POSTHOG_WEBHOOK_SECRET;
-const API_KEY = process.env.POSTHOG_API_KEY;
+const API_KEY = process.env.TELEMETRY_API_KEY;
 
-if (!WEBHOOK_SECRET) {
-    console.warn('[Auth] WARNING: POSTHOG_WEBHOOK_SECRET is not set. /api/events is in insecure dev mode.');
+if (!WEBHOOK_SECRET && !API_KEY) {
+    console.warn('[Auth] WARNING: No auth configured. /api/events is in insecure dev mode.');
 } else {
-    console.log('[Auth] HMAC signature verification enabled for /api/events');
-}
-
-if (API_KEY) {
-    console.log('[Auth] API Key fallback enabled for /api/events');
+    if (WEBHOOK_SECRET) console.log('[Auth] HMAC signature verification enabled for /api/events');
+    if (API_KEY) console.log('[Auth] API Key auth enabled for /api/events');
 }
 
 // ─── Load room config from rooms.json ───────────────────────────────────────
@@ -110,26 +110,34 @@ app.get('/api/rooms', (_req, res) => {
 // API endpoint mimicking PostHog ingest / custom webhook
 app.post('/api/events', (req, res) => {
     // ─── Authentication Check ───────────────────────────────────────────────
-    let isAuthorized = true;
+    // Open only when neither auth method is configured (dev mode).
+    // If either is set, all requests must pass at least one check.
+    let isAuthorized = !WEBHOOK_SECRET && !API_KEY;
 
-    // 1. Signature Verification (HMAC-SHA256)
+    // req.body is a raw Buffer here (express.raw middleware applied above)
+    const rawBody = req.body as Buffer;
+
+    // 1. Signature Verification (HMAC-SHA256 on raw bytes — timing-safe)
     if (WEBHOOK_SECRET) {
-        isAuthorized = false;
         const signature = req.headers['x-posthog-signature'];
         if (signature && typeof signature === 'string') {
             const [version, hash] = signature.split('=');
             if (version === 'sha256' && hash) {
                 const computedHash = crypto.createHmac('sha256', WEBHOOK_SECRET)
-                    .update(JSON.stringify(req.body))
+                    .update(rawBody)
                     .digest('hex');
-                if (computedHash === hash) {
-                    isAuthorized = true;
+                try {
+                    if (crypto.timingSafeEqual(Buffer.from(computedHash), Buffer.from(hash))) {
+                        isAuthorized = true;
+                    }
+                } catch {
+                    // timingSafeEqual throws if buffers differ in length — treat as mismatch
                 }
             }
         }
     }
 
-    // 2. API Key Fallback (Bearer Token)
+    // 2. API Key Fallback (Bearer Token) — independent of WEBHOOK_SECRET
     if (!isAuthorized && API_KEY) {
         const authHeader = req.headers['authorization'];
         if (authHeader && typeof authHeader === 'string' && authHeader.startsWith('Bearer ')) {
@@ -142,10 +150,18 @@ app.post('/api/events', (req, res) => {
 
     if (!isAuthorized) {
         console.warn('[Auth] Rejected unauthorized request to /api/events');
-        return res.status(403).json({ error: 'Unauthorized: Invalid signature or API key' });
+        return res.status(401).json({ error: 'Unauthorized: Invalid signature or API key' });
     }
 
-    const { event, properties, timestamp } = req.body;
+    // Parse the raw body now that auth has passed
+    let parsedBody: any;
+    try {
+        parsedBody = JSON.parse(rawBody.toString());
+    } catch {
+        return res.status(400).json({ error: 'Invalid JSON body' });
+    }
+
+    const { event, properties, timestamp } = parsedBody;
 
     if (!properties || !properties.distinct_id) {
         return res.status(400).json({ error: 'Missing properties.distinct_id' });

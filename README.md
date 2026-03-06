@@ -82,7 +82,7 @@ Or point a [PostHog webhook](https://posthog.com/docs/webhooks) directly at your
 For production deployments, you can secure the `/api/events` endpoint using environment variables:
 
 - `POSTHOG_WEBHOOK_SECRET`: If set, the server verifies the `X-Posthog-Signature` header (HMAC-SHA256) sent by PostHog webhooks.
-- `POSTHOG_API_KEY`: If set, the server also accepts `Authorization: Bearer <your_api_key>` for manual event ingestion.
+- `TELEMETRY_API_KEY`: If set, the server also accepts `Authorization: Bearer <your_api_key>` for manual event ingestion. Named `TELEMETRY_API_KEY` (not `POSTHOG_API_KEY`) to avoid clashing with PostHog's own client SDK variable.
 
 If neither is set, the server runs in insecure development mode and accepts all requests.
 
