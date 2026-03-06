@@ -95,6 +95,36 @@ console.log(`[Config] Loaded ${roomConfig.rooms.length} rooms, ${SUB_ROOM_EVENTS
 
 const activeUsers: Record<string, any> = {};
 const userHistory: Record<string, any[]> = {};
+const EVENTS_LOG_PATH = path.join(process.cwd(), 'events.log');
+const MAX_LOG_LINES = 100000;
+let logLineCount = 0;
+
+// Initialize log line count
+if (fs.existsSync(EVENTS_LOG_PATH)) {
+    const content = fs.readFileSync(EVENTS_LOG_PATH, 'utf8');
+    logLineCount = content.split('\n').filter(line => line.trim()).length;
+}
+
+function rotateLogIfNeeded() {
+    if (logLineCount >= MAX_LOG_LINES) {
+        console.log('[Log] Rotating events.log...');
+        const lines = fs.readFileSync(EVENTS_LOG_PATH, 'utf8').split('\n').filter(line => line.trim());
+        const keepCount = Math.floor(MAX_LOG_LINES * 0.9);
+        const newLines = lines.slice(lines.length - keepCount);
+        fs.writeFileSync(EVENTS_LOG_PATH, newLines.join('\n') + '\n');
+        logLineCount = newLines.length;
+    }
+}
+
+function persistEvent(userState: any) {
+    rotateLogIfNeeded();
+    const entry = JSON.stringify({
+        timestamp: Date.now(),
+        ...userState
+    });
+    fs.appendFileSync(EVENTS_LOG_PATH, entry + '\n');
+    logLineCount++;
+}
 
 // ─── WebSocket connections ──────────────────────────────────────────────────
 
@@ -184,6 +214,9 @@ function processEvent(data: {
         purchaseAmount: purchaseAmount
     };
 
+    // Persist event to log
+    persistEvent(activeUsers[userId]);
+
     console.log(`[Event] ${name} (${browser}/${os}) -> ${roomInfo.label} (${pos.x.toFixed(1)}, ${pos.y.toFixed(1)}) | ${actionStr}${isPurchase ? ` $${purchaseAmount?.toFixed(2)}` : ''}`);
 
     // Store history entry
@@ -247,6 +280,42 @@ function parseUA(ua: string) {
 // Serve room config to frontend
 app.get('/api/rooms', (_req, res) => {
     res.json(roomConfig);
+});
+
+// Replay metadata
+app.get('/api/replay/range', (_req, res) => {
+    if (!fs.existsSync(EVENTS_LOG_PATH)) {
+        return res.json({ earliest: 0, latest: 0, count: 0 });
+    }
+    const lines = fs.readFileSync(EVENTS_LOG_PATH, 'utf8').split('\n').filter(line => line.trim());
+    if (lines.length === 0) {
+        return res.json({ earliest: 0, latest: 0, count: 0 });
+    }
+    const first = JSON.parse(lines[0]);
+    const last = JSON.parse(lines[lines.length - 1]);
+    res.json({
+        earliest: first.timestamp,
+        latest: last.timestamp,
+        count: lines.length
+    });
+});
+
+// Replay events
+app.get('/api/replay/events', (req, res) => {
+    if (!fs.existsSync(EVENTS_LOG_PATH)) {
+        return res.json([]);
+    }
+    const { from, to } = req.query;
+    const fromTs = from ? parseInt(from as string) : 0;
+    const toTs = to ? parseInt(to as string) : Date.now();
+
+    const lines = fs.readFileSync(EVENTS_LOG_PATH, 'utf8').split('\n').filter(line => line.trim());
+    const events = lines
+        .map(line => JSON.parse(line))
+        .filter(event => event.timestamp >= fromTs && event.timestamp <= toTs)
+        .sort((a, b) => a.timestamp - b.timestamp);
+
+    res.json(events);
 });
 
 // API endpoint mimicking PostHog ingest / custom webhook
