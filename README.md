@@ -77,6 +77,15 @@ curl -X POST http://localhost:3001/api/events \
 
 Or point a [PostHog webhook](https://posthog.com/docs/webhooks) directly at your server.
 
+### Production Auth
+
+For production deployments, you can secure the `/api/events` endpoint using environment variables:
+
+- `POSTHOG_WEBHOOK_SECRET`: If set, the server verifies the `X-Posthog-Signature` header (HMAC-SHA256) sent by PostHog webhooks.
+- `TELEMETRY_API_KEY`: If set, the server also accepts `Authorization: Bearer <your_api_key>` for manual event ingestion. Named `TELEMETRY_API_KEY` (not `POSTHOG_API_KEY`) to avoid clashing with PostHog's own client SDK variable.
+
+If neither is set, the server runs in insecure development mode and accepts all requests.
+
 ### OpenTelemetry (OTLP)
 
 You can also pipe OpenTelemetry JSON traces directly to the OTLP-compatible endpoint. This is useful for backend services or web apps already instrumented with OTel:
