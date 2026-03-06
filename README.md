@@ -130,6 +130,7 @@ If `OTEL_BEARER_TOKEN` is set in your environment, the `Authorization` header is
 > OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3001/api/otlp
 > ```
 
+
 ## Features
 
 - **Live avatar map** — Colored circles with bouncy CSS animations move between 5 rooms
@@ -209,7 +210,7 @@ All rooms are defined in [`rooms.json`](rooms.json) — edit this file to model 
 - [x] **Session timelines** — Click an avatar to see their full journey through the site
 - [ ] **Room furniture** — Add visual elements inside rooms (shopping carts, forms, etc.)
 - [ ] **Multiple floors** — Navigate between different map views for different site sections
-- [ ] **Real PostHog webhook adapter** — Production-ready integration with auth
+- [x] **Real PostHog webhook adapter** — Production-ready integration with HMAC-SHA256 signature verification and API key auth
 - [x] **OpenTelemetry / OTLP adapter** — Support for OTel JSON traces directly into the dashboard
 - [ ] **Segment / Mixpanel adapters** — Support more analytics platforms
 - [x] **Configurable room layouts** — JSON-based map definitions so anyone can model their site

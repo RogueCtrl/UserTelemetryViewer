@@ -41,6 +41,7 @@ if (!OTEL_BEARER_TOKEN) {
     console.warn('[OTel] Warning: OTEL_BEARER_TOKEN not set. OTLP endpoint is unauthenticated.');
 }
 
+
 // ─── Load room config from rooms.json ───────────────────────────────────────
 
 const roomConfig = JSON.parse(fs.readFileSync(path.join(import.meta.dirname || __dirname, 'rooms.json'), 'utf-8'));
