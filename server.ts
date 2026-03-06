@@ -2,6 +2,7 @@ import express from 'express';
 import { createServer } from 'http';
 import { Server } from 'socket.io';
 import cors from 'cors';
+import crypto from 'crypto';
 import fs from 'fs';
 import path from 'path';
 
@@ -254,7 +255,9 @@ app.post('/api/otlp/v1/traces', (req, res) => {
     // Auth check
     if (OTEL_BEARER_TOKEN) {
         const authHeader = req.headers.authorization;
-        if (!authHeader || authHeader !== `Bearer ${OTEL_BEARER_TOKEN}`) {
+        const expected = Buffer.from(`Bearer ${OTEL_BEARER_TOKEN}`);
+        const actual = Buffer.from(authHeader ?? '');
+        if (expected.length !== actual.length || !crypto.timingSafeEqual(expected, actual)) {
             return res.status(401).json({ error: 'Unauthorized' });
         }
     }
@@ -264,47 +267,55 @@ app.post('/api/otlp/v1/traces', (req, res) => {
         return res.status(200).json({});
     }
 
-    for (const rs of resourceSpans) {
-        const resourceAttrs: Record<string, any> = {};
-        if (rs.resource?.attributes) {
-            for (const attr of rs.resource.attributes) {
-                const val = attr.value;
-                resourceAttrs[attr.key] = val.stringValue ?? val.intValue ?? val.boolValue ?? val.doubleValue;
+    try {
+        for (const rs of resourceSpans) {
+            const resourceAttrs: Record<string, any> = {};
+            if (rs.resource?.attributes) {
+                for (const attr of rs.resource.attributes) {
+                    const val = attr.value ?? {};
+                    resourceAttrs[attr.key] = val.stringValue ?? val.intValue ?? val.boolValue ?? val.doubleValue;
+                }
             }
-        }
 
-        if (rs.scopeSpans) {
-            for (const ss of rs.scopeSpans) {
-                if (ss.spans) {
-                    for (const span of ss.spans) {
-                        const spanAttrs: Record<string, any> = {};
-                        if (span.attributes) {
-                            for (const attr of span.attributes) {
-                                const val = attr.value;
-                                spanAttrs[attr.key] = val.stringValue ?? val.intValue ?? val.boolValue ?? val.doubleValue;
+            if (rs.scopeSpans) {
+                for (const ss of rs.scopeSpans) {
+                    if (ss.spans) {
+                        for (const span of ss.spans) {
+                            const spanAttrs: Record<string, any> = {};
+                            if (span.attributes) {
+                                for (const attr of span.attributes) {
+                                    const val = attr.value ?? {};
+                                    spanAttrs[attr.key] = val.stringValue ?? val.intValue ?? val.boolValue ?? val.doubleValue;
+                                }
                             }
+
+                            const traceId = span.traceId;
+                            const userId = spanAttrs['user.id'] || spanAttrs['enduser.id'] || resourceAttrs['user.id'] || resourceAttrs['enduser.id'] || traceId;
+                            if (!spanAttrs['user.id'] && !spanAttrs['enduser.id'] && !resourceAttrs['user.id'] && !resourceAttrs['enduser.id']) {
+                                console.debug(`[OTel] No user.id found in span or resource attributes — falling back to traceId: ${traceId}`);
+                            }
+                            const userName = spanAttrs['user.name'] || spanAttrs['enduser.name'] || resourceAttrs['user.name'] || resourceAttrs['enduser.name'] || (traceId ? traceId.substring(0, 6) : 'Unknown');
+                            const url = spanAttrs['http.url'] || spanAttrs['http.target'] || '';
+                            const ua = spanAttrs['http.user_agent'] || resourceAttrs['http.user_agent'] || '';
+                            const { browser, os } = parseUA(ua);
+
+                            processEvent({
+                                event: span.name,
+                                userId,
+                                name: userName,
+                                url,
+                                browser,
+                                os,
+                                properties: { ...resourceAttrs, ...spanAttrs }
+                            });
                         }
-
-                        const traceId = span.traceId;
-                        const userId = spanAttrs['user.id'] || spanAttrs['enduser.id'] || resourceAttrs['user.id'] || resourceAttrs['enduser.id'] || traceId;
-                        const userName = spanAttrs['user.name'] || spanAttrs['enduser.name'] || resourceAttrs['user.name'] || resourceAttrs['enduser.name'] || (traceId ? traceId.substring(0, 6) : 'Unknown');
-                        const url = spanAttrs['http.url'] || spanAttrs['http.target'] || '';
-                        const ua = spanAttrs['http.user_agent'] || resourceAttrs['http.user_agent'] || '';
-                        const { browser, os } = parseUA(ua);
-
-                        processEvent({
-                            event: span.name,
-                            userId,
-                            name: userName,
-                            url,
-                            browser,
-                            os,
-                            properties: { ...resourceAttrs, ...spanAttrs }
-                        });
                     }
                 }
             }
         }
+    } catch (err) {
+        console.error('[OTel] Failed to process trace payload:', err);
+        return res.status(400).json({ error: 'Invalid trace payload' });
     }
 
     res.status(200).json({});

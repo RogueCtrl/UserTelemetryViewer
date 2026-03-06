@@ -111,6 +111,16 @@ curl -X POST http://localhost:3001/api/otlp/v1/traces \
 
 If `OTEL_BEARER_TOKEN` is set in your environment, the `Authorization` header is required.
 
+> **Protocol note:** This endpoint only supports **JSON over HTTP** (`Content-Type: application/json`). Most OTel SDKs default to protobuf over gRPC. Configure your SDK to use the JSON/HTTP exporter:
+> ```
+> OTEL_EXPORTER_OTLP_PROTOCOL=http/json
+> ```
+
+> **Endpoint note:** The OTLP path is `/api/otlp/v1/traces` — not the bare `/v1/traces` used by standard collectors. You must include the `/api/otlp` prefix when configuring your exporter:
+> ```
+> OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:3001/api/otlp
+> ```
+
 ## Features
 
 - **Live avatar map** — Colored circles with bouncy CSS animations move between 5 rooms
