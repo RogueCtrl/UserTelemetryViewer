@@ -206,7 +206,7 @@ All rooms are defined in [`rooms.json`](rooms.json) — edit this file to model 
 
 Priority-stacked — highest value items first.
 
-- [ ] **Historical replay** ⭐ — Persist events to disk and scrub through past traffic patterns with a timeline player
+- [x] **Historical replay** ⭐ — Persist events to disk and scrub through past traffic patterns with a timeline player
 - [ ] **Heatmap overlay mode** ⭐ — Toggle from live avatars to a color-graded room heatmap showing traffic density over time
 - [ ] **User search & filter** — Find a specific user on the map; filter avatars by room, browser, or OS
 - [ ] **Threshold alerting** — Define rules (e.g. >N users in a room, conversion rate drops) and fire browser notifications or outbound webhooks
