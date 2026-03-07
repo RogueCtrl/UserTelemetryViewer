@@ -12,9 +12,19 @@ interface GameMapProps {
     connections: ConnectionDef[];
     onAvatarClick?: (userId: string) => void;
     selectedUserId?: string | null;
+    viewMode?: 'live' | 'heatmap';
+    trafficStats?: Record<string, number>;
 }
 
-export const GameMap: React.FC<GameMapProps> = ({ users, rooms, connections, onAvatarClick, selectedUserId }) => {
+export const GameMap: React.FC<GameMapProps> = ({ 
+    users, 
+    rooms, 
+    connections, 
+    onAvatarClick, 
+    selectedUserId,
+    viewMode = 'live',
+    trafficStats = {}
+}) => {
     const gridSize = 40;
 
     // Build label-to-id map dynamically
@@ -34,6 +44,9 @@ export const GameMap: React.FC<GameMapProps> = ({ users, rooms, connections, onA
             occupancy[roomId] = (occupancy[roomId] || 0) + 1;
         }
     });
+
+    // Calculate max traffic for heatmap normalization
+    const maxTraffic = Math.max(1, ...Object.values(trafficStats));
 
     // Separate sub-room occupancy for each parent
     const getSubRoomOccupancy = (room: RoomData): Record<string, number> => {
@@ -116,9 +129,12 @@ export const GameMap: React.FC<GameMapProps> = ({ users, rooms, connections, onA
                     room={room}
                     occupancy={occupancy[room.id] || 0}
                     subRoomOccupancy={getSubRoomOccupancy(room)}
+                    viewMode={viewMode}
+                    trafficStats={trafficStats}
+                    maxTraffic={maxTraffic}
                 />
             ))}
-            {users.map(u => (
+            {viewMode === 'live' && users.map(u => (
                 <Avatar
                     key={u.id}
                     user={u}

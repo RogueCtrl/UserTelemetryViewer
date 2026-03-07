@@ -1,5 +1,5 @@
 import React from 'react';
-import { Users } from 'lucide-react';
+import { Users, Flame } from 'lucide-react';
 
 export interface SubRoomData {
     id: string;
@@ -26,7 +26,20 @@ interface RoomProps {
     gridSize?: number;
     occupancy?: number;
     subRoomOccupancy?: Record<string, number>;
+    viewMode?: 'live' | 'heatmap';
+    trafficStats?: Record<string, number>;
+    maxTraffic?: number;
 }
+
+const getHeatColor = (density: number, maxDensity: number) => {
+    if (density === 0) return 'rgba(30, 41, 59, 0.45)';
+    const ratio = Math.min(density / maxDensity, 1);
+    
+    // Scale: Blue (220) -> Cyan -> Green -> Yellow -> Orange -> Red (0)
+    // A linear interpolation from Blue (220) to Red (0) in HSL
+    const hue = Math.max(0, 220 - (ratio * 220));
+    return `hsla(${hue}, 85%, 55%, 0.7)`;
+};
 
 function getSubRoomPosition(parent: RoomData, sub: SubRoomData, gridSize: number) {
     const gap = 0.5 * gridSize; // gap between parent and sub-room
@@ -88,7 +101,19 @@ function getConnectorLine(parent: RoomData, sub: SubRoomData, gridSize: number) 
     }
 }
 
-export const Room: React.FC<RoomProps> = ({ room, gridSize = 40, occupancy = 0, subRoomOccupancy = {} }) => {
+export const Room: React.FC<RoomProps> = ({ 
+    room, 
+    gridSize = 40, 
+    occupancy = 0, 
+    subRoomOccupancy = {},
+    viewMode = 'live',
+    trafficStats = {},
+    maxTraffic = 1
+}) => {
+    const isHeatmap = viewMode === 'heatmap';
+    const roomTraffic = trafficStats[room.id] || 0;
+    const heatmapColor = isHeatmap ? getHeatColor(roomTraffic, maxTraffic) : null;
+
     return (
         <>
             {/* Main Room */}
@@ -104,15 +129,19 @@ export const Room: React.FC<RoomProps> = ({ room, gridSize = 40, occupancy = 0, 
                     flexDirection: 'column',
                     alignItems: 'center',
                     justifyContent: 'center',
-                    border: '2px solid rgba(255, 255, 255, 0.1)',
-                    backgroundColor: room.color || 'rgba(30, 41, 59, 0.65)',
+                    border: isHeatmap 
+                        ? `2px solid ${heatmapColor}`
+                        : '2px solid rgba(255, 255, 255, 0.1)',
+                    backgroundColor: isHeatmap 
+                        ? heatmapColor! 
+                        : (room.color || 'rgba(30, 41, 59, 0.65)'),
                     borderRadius: '16px',
                     zIndex: 10,
-                    boxShadow: occupancy > 0
-                        ? '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 0 30px rgba(255, 255, 255, 0.03)'
+                    boxShadow: (occupancy > 0 || isHeatmap)
+                        ? `0 8px 32px rgba(0, 0, 0, 0.4), inset 0 0 30px ${isHeatmap ? 'rgba(255, 255, 255, 0.1)' : 'rgba(255, 255, 255, 0.03)'}`
                         : '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 0 20px rgba(0, 0, 0, 0.2)',
                     backdropFilter: 'blur(8px)',
-                    transition: 'box-shadow 0.5s ease, border-color 0.5s ease',
+                    transition: 'all 0.5s ease',
                 }}
             >
                 <h3 style={{
@@ -126,8 +155,8 @@ export const Room: React.FC<RoomProps> = ({ room, gridSize = 40, occupancy = 0, 
                     {room.name}
                 </h3>
 
-                {/* Occupancy Badge */}
-                {occupancy > 0 && (
+                {/* Occupancy / Traffic Badge */}
+                {(occupancy > 0 || (isHeatmap && roomTraffic > 0)) && (
                     <div style={{
                         position: 'absolute',
                         top: 8,
@@ -137,14 +166,14 @@ export const Room: React.FC<RoomProps> = ({ room, gridSize = 40, occupancy = 0, 
                         gap: '4px',
                         padding: '3px 8px',
                         borderRadius: '12px',
-                        backgroundColor: 'rgba(16, 185, 129, 0.2)',
-                        border: '1px solid rgba(16, 185, 129, 0.3)',
+                        backgroundColor: isHeatmap ? 'rgba(255, 255, 255, 0.2)' : 'rgba(16, 185, 129, 0.2)',
+                        border: isHeatmap ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid rgba(16, 185, 129, 0.3)',
                         fontSize: '0.7rem',
-                        color: 'var(--accent-green)',
+                        color: isHeatmap ? '#fff' : 'var(--accent-green)',
                         fontWeight: 600,
                     }}>
-                        <Users size={10} />
-                        {occupancy}
+                        {isHeatmap ? <Flame size={10} /> : <Users size={10} />}
+                        {isHeatmap ? roomTraffic : occupancy}
                     </div>
                 )}
             </div>
@@ -154,6 +183,8 @@ export const Room: React.FC<RoomProps> = ({ room, gridSize = 40, occupancy = 0, 
                 const pos = getSubRoomPosition(room, sub, gridSize);
                 const connector = getConnectorLine(room, sub, gridSize);
                 const subOcc = subRoomOccupancy[sub.id] || 0;
+                const subTraffic = trafficStats[sub.id] || 0;
+                const subHeatmapColor = isHeatmap ? getHeatColor(subTraffic, maxTraffic) : null;
 
                 return (
                     <React.Fragment key={sub.id}>
@@ -162,7 +193,7 @@ export const Room: React.FC<RoomProps> = ({ room, gridSize = 40, occupancy = 0, 
                             <line
                                 x1={connector.x1} y1={connector.y1}
                                 x2={connector.x2} y2={connector.y2}
-                                stroke="rgba(139, 92, 246, 0.2)"
+                                stroke={isHeatmap ? subHeatmapColor! : "rgba(139, 92, 246, 0.2)"}
                                 strokeWidth="1.5"
                                 strokeDasharray="4 3"
                             />
@@ -182,8 +213,15 @@ export const Room: React.FC<RoomProps> = ({ room, gridSize = 40, occupancy = 0, 
                                 alignItems: 'center',
                                 justifyContent: 'center',
                                 zIndex: 9,
+                                border: isHeatmap 
+                                    ? `1px solid ${subHeatmapColor}`
+                                    : 'none',
+                                backgroundColor: isHeatmap 
+                                    ? subHeatmapColor!
+                                    : undefined,
+                                borderRadius: isHeatmap ? '12px' : '0',
                                 backdropFilter: 'blur(6px)',
-                                transition: 'box-shadow 0.5s ease, border-color 0.5s ease',
+                                transition: 'all 0.5s ease',
                             }}
                         >
                             <h3 style={{
@@ -198,8 +236,8 @@ export const Room: React.FC<RoomProps> = ({ room, gridSize = 40, occupancy = 0, 
                                 {sub.name}
                             </h3>
 
-                            {/* Sub-room occupancy badge */}
-                            {subOcc > 0 && (
+                            {/* Sub-room occupancy / traffic badge */}
+                            {(subOcc > 0 || (isHeatmap && subTraffic > 0)) && (
                                 <div style={{
                                     position: 'absolute',
                                     top: 4,
@@ -209,14 +247,14 @@ export const Room: React.FC<RoomProps> = ({ room, gridSize = 40, occupancy = 0, 
                                     gap: '3px',
                                     padding: '2px 6px',
                                     borderRadius: '8px',
-                                    backgroundColor: 'rgba(139, 92, 246, 0.2)',
-                                    border: '1px solid rgba(139, 92, 246, 0.3)',
+                                    backgroundColor: isHeatmap ? 'rgba(255, 255, 255, 0.2)' : 'rgba(139, 92, 246, 0.2)',
+                                    border: isHeatmap ? '1px solid rgba(255, 255, 255, 0.3)' : '1px solid rgba(139, 92, 246, 0.3)',
                                     fontSize: '0.6rem',
-                                    color: 'var(--accent-purple)',
+                                    color: isHeatmap ? '#fff' : 'var(--accent-purple)',
                                     fontWeight: 600,
                                 }}>
-                                    <Users size={8} />
-                                    {subOcc}
+                                    {isHeatmap ? <Flame size={8} /> : <Users size={8} />}
+                                    {isHeatmap ? subTraffic : subOcc}
                                 </div>
                             )}
                         </div>
