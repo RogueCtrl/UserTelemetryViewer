@@ -12,6 +12,8 @@ interface GameMapProps {
     connections: ConnectionDef[];
     onAvatarClick?: (userId: string) => void;
     selectedUserId?: string | null;
+    highlightedUserIds?: Set<string>;
+    dimmedUserIds?: Set<string>;
     viewMode?: 'live' | 'heatmap';
     trafficStats?: Record<string, number>;
 }
@@ -22,6 +24,8 @@ export const GameMap: React.FC<GameMapProps> = ({
     connections, 
     onAvatarClick, 
     selectedUserId,
+    highlightedUserIds = new Set(),
+    dimmedUserIds = new Set(),
     viewMode = 'live',
     trafficStats = {}
 }) => {
@@ -139,6 +143,8 @@ export const GameMap: React.FC<GameMapProps> = ({
                     key={u.id}
                     user={u}
                     isSelected={u.id === selectedUserId}
+                    isHighlighted={highlightedUserIds.has(u.id)}
+                    isDimmed={dimmedUserIds.has(u.id)}
                     onClick={onAvatarClick}
                     rooms={rooms}
                     connections={connections}

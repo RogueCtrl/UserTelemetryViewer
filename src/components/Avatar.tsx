@@ -27,12 +27,23 @@ interface AvatarProps {
     user: UserState;
     gridSize?: number;
     isSelected?: boolean;
+    isDimmed?: boolean;
+    isHighlighted?: boolean;
     onClick?: (userId: string) => void;
     rooms?: RoomData[];
     connections?: ConnectionDef[];
 }
 
-export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40, isSelected, onClick, rooms, connections }) => {
+export const Avatar: React.FC<AvatarProps> = ({ 
+    user, 
+    gridSize = 40, 
+    isSelected, 
+    isDimmed,
+    isHighlighted,
+    onClick, 
+    rooms, 
+    connections 
+}) => {
     const [isHovered, setIsHovered] = useState(false);
     const [displayPos, setDisplayPos] = useState({ x: user.x, y: user.y });
     const [isWalking, setIsWalking] = useState(false);
@@ -157,19 +168,20 @@ export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40, isSelected,
                 position: 'absolute',
                 top: 0,
                 left: 0,
-                transform: `translate(${pixelX}px, ${pixelY}px) translate(-50%, -50%)`,
+                transform: `translate(${pixelX}px, ${pixelY}px) translate(-50%, -50%) ${isHighlighted ? 'scale(1.3)' : 'scale(1)'}`,
                 transition: isWalking
                     ? 'transform 0.4s linear'
-                    : 'transform 1.2s cubic-bezier(0.34, 1.56, 0.64, 1)',
-                zIndex: isSelected ? 55 : 50,
+                    : 'transform 1.2s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.5s ease',
+                zIndex: isHighlighted ? 60 : (isSelected ? 55 : 50),
                 cursor: 'pointer',
+                opacity: isDimmed ? 0.3 : 1,
             }}
             onMouseEnter={() => setIsHovered(true)}
             onMouseLeave={() => setIsHovered(false)}
             onClick={() => onClick?.(user.id)}
         >
             <div
-                className={isSelected ? 'selected-ring' : ''}
+                className={`${isSelected ? 'selected-ring' : ''} ${isHighlighted ? 'highlight-ring' : ''}`}
                 style={{
                     width: '32px',
                     height: '32px',
@@ -180,13 +192,17 @@ export const Avatar: React.FC<AvatarProps> = ({ user, gridSize = 40, isSelected,
                     justifyContent: 'center',
                     boxShadow: isPurchase
                         ? undefined
-                        : `0 0 16px ${user.color}80, inset 0 0 8px rgba(255,255,255,0.3)`,
+                        : (isHighlighted 
+                            ? `0 0 24px ${user.color}, inset 0 0 8px rgba(255,255,255,0.3)`
+                            : `0 0 16px ${user.color}80, inset 0 0 8px rgba(255,255,255,0.3)`),
                     border: isPurchase ? '2px solid rgba(245, 158, 11, 0.8)' : '2px solid rgba(255,255,255,0.8)',
                     position: 'relative',
-                    animation: isPurchase
-                        ? 'goldPulse 1.5s ease-in-out infinite'
-                        : (isWalking || user.status === 'moving') ? 'float 0.5s ease-in-out infinite alternate' : 'none',
-                    transition: 'background-color 0.3s ease, border-color 0.3s ease',
+                    animation: isHighlighted
+                        ? 'highlightPulse 1s ease-in-out infinite'
+                        : (isPurchase
+                            ? 'goldPulse 1.5s ease-in-out infinite'
+                            : (isWalking || user.status === 'moving') ? 'float 0.5s ease-in-out infinite alternate' : 'none'),
+                    transition: 'background-color 0.3s ease, border-color 0.3s ease, transform 0.3s ease',
                 }}
             >
                 <User size={18} color="#fff" />

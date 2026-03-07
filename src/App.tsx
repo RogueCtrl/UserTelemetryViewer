@@ -6,7 +6,7 @@ import type { UserState } from './components/Avatar';
 import type { RoomData } from './components/Room';
 import { TransactionPanel, type Transaction } from './components/TransactionPanel';
 import { SessionTimeline, type HistoryEntry } from './components/SessionTimeline';
-import { Activity, ArrowRight, Clock, Eye, Flame } from 'lucide-react';
+import { Activity, ArrowRight, Clock, Eye, Flame, Search, Filter, X, Globe, Monitor, Home } from 'lucide-react';
 import { ReplayControls } from './components/ReplayControls';
 
 // Connect to the local backend server
@@ -43,6 +43,13 @@ const App: React.FC = () => {
   const [enableTransactions, setEnableTransactions] = useState(true);
   const [viewMode, setViewMode] = useState<'live' | 'heatmap'>('live');
   const [trafficStats, setTrafficStats] = useState<Record<string, number>>({});
+  
+  // Search & Filter state
+  const [searchQuery, setSearchQuery] = useState('');
+  const [roomFilter, setRoomFilter] = useState<string>('all');
+  const [browserFilter, setBrowserFilter] = useState<string>('all');
+  const [osFilter, setOsFilter] = useState<string>('all');
+  
   const feedRef = useRef<HTMLDivElement>(null);
 
   // Helper to map room name to ID
@@ -170,6 +177,41 @@ const App: React.FC = () => {
 
   const displayUsers = replayMode ? replayUsers : users;
 
+  // Filter & Highlight logic
+  const uniqueBrowsers = Array.from(new Set(displayUsers.map(u => u.browser).filter(Boolean))) as string[];
+  const uniqueOSs = Array.from(new Set(displayUsers.map(u => u.os).filter(Boolean))) as string[];
+  const roomNames = Array.from(new Set(rooms.map(r => r.name)));
+
+  const isFiltering = searchQuery !== '' || roomFilter !== 'all' || browserFilter !== 'all' || osFilter !== 'all';
+
+  const highlightedUserIds = new Set<string>();
+  const dimmedUserIds = new Set<string>();
+
+  if (isFiltering) {
+    displayUsers.forEach(u => {
+      const matchesSearch = searchQuery === '' || 
+        u.id.toLowerCase().includes(searchQuery.toLowerCase()) || 
+        u.name.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      const matchesRoom = roomFilter === 'all' || u.activeRoom === roomFilter;
+      const matchesBrowser = browserFilter === 'all' || u.browser === browserFilter;
+      const matchesOS = osFilter === 'all' || u.os === osFilter;
+
+      if (matchesSearch && matchesRoom && matchesBrowser && matchesOS) {
+        highlightedUserIds.add(u.id);
+      } else {
+        dimmedUserIds.add(u.id);
+      }
+    });
+  }
+
+  const resetFilters = () => {
+    setSearchQuery('');
+    setRoomFilter('all');
+    setBrowserFilter('all');
+    setOsFilter('all');
+  };
+
   return (
     <div className="app-container">
       {/* UI Overlay - Header */}
@@ -277,6 +319,153 @@ const App: React.FC = () => {
             <span style={{ color: 'var(--text-primary)', fontWeight: 600 }}>{displayUsers.length}</span> users {replayMode ? 'visible' : 'active'}
           </p>
         </div>
+
+        {/* Search & Filters */}
+        <div style={{ 
+          marginTop: '16px', 
+          paddingTop: '16px', 
+          borderTop: '1px solid var(--surface-border)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '12px'
+        }}>
+          {/* Search Bar */}
+          <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+            <Search size={14} style={{ position: 'absolute', left: '10px', color: 'var(--text-secondary)' }} />
+            <input 
+              type="text" 
+              placeholder="Search by name or ID..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px 10px 8px 32px',
+                borderRadius: '8px',
+                border: '1px solid var(--surface-border)',
+                backgroundColor: 'rgba(0,0,0,0.2)',
+                color: 'var(--text-primary)',
+                fontSize: '0.75rem',
+                outline: 'none',
+              }}
+            />
+            {searchQuery && (
+              <X 
+                size={14} 
+                onClick={() => setSearchQuery('')}
+                style={{ position: 'absolute', right: '10px', color: 'var(--text-secondary)', cursor: 'pointer' }} 
+              />
+            )}
+          </div>
+
+          {/* Filter Controls */}
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+            {/* Room Filter */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: '110px' }}>
+              <Home size={12} style={{ position: 'absolute', left: '8px', color: roomFilter !== 'all' ? 'var(--accent-blue)' : 'var(--text-secondary)' }} />
+              <select 
+                value={roomFilter}
+                onChange={(e) => setRoomFilter(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '6px 8px 6px 26px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--surface-border)',
+                  backgroundColor: 'rgba(0,0,0,0.2)',
+                  color: roomFilter !== 'all' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontSize: '0.7rem',
+                  outline: 'none',
+                  appearance: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="all">All Rooms</option>
+                {roomNames.map(name => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* Browser Filter */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: '110px' }}>
+              <Globe size={12} style={{ position: 'absolute', left: '8px', color: browserFilter !== 'all' ? 'var(--accent-blue)' : 'var(--text-secondary)' }} />
+              <select 
+                value={browserFilter}
+                onChange={(e) => setBrowserFilter(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '6px 8px 6px 26px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--surface-border)',
+                  backgroundColor: 'rgba(0,0,0,0.2)',
+                  color: browserFilter !== 'all' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontSize: '0.7rem',
+                  outline: 'none',
+                  appearance: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="all">All Browsers</option>
+                {uniqueBrowsers.map(b => (
+                  <option key={b} value={b}>{b}</option>
+                ))}
+              </select>
+            </div>
+
+            {/* OS Filter */}
+            <div style={{ position: 'relative', display: 'flex', alignItems: 'center', flex: 1, minWidth: '110px' }}>
+              <Monitor size={12} style={{ position: 'absolute', left: '8px', color: osFilter !== 'all' ? 'var(--accent-blue)' : 'var(--text-secondary)' }} />
+              <select 
+                value={osFilter}
+                onChange={(e) => setOsFilter(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '6px 8px 6px 26px',
+                  borderRadius: '6px',
+                  border: '1px solid var(--surface-border)',
+                  backgroundColor: 'rgba(0,0,0,0.2)',
+                  color: osFilter !== 'all' ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  fontSize: '0.7rem',
+                  outline: 'none',
+                  appearance: 'none',
+                  cursor: 'pointer'
+                }}
+              >
+                <option value="all">All OSs</option>
+                {uniqueOSs.map(os => (
+                  <option key={os} value={os}>{os}</option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          {/* Active Filter Indicators & Reset */}
+          {isFiltering && (
+            <button 
+              onClick={resetFilters}
+              style={{
+                width: '100%',
+                padding: '6px',
+                borderRadius: '6px',
+                border: '1px dashed var(--accent-blue)',
+                backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                color: 'var(--accent-blue)',
+                fontSize: '0.7rem',
+                fontWeight: 600,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '4px',
+                transition: 'all 0.2s'
+              }}
+              onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.2)'}
+              onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(59, 130, 246, 0.1)'}
+            >
+              <X size={12} />
+              Clear Filters
+            </button>
+          )}
+        </div>
       </header>
 
       {/* Replay Controls */}
@@ -369,6 +558,8 @@ const App: React.FC = () => {
         connections={connections}
         onAvatarClick={handleAvatarClick}
         selectedUserId={selectedUserId}
+        highlightedUserIds={highlightedUserIds}
+        dimmedUserIds={dimmedUserIds}
         viewMode={viewMode}
         trafficStats={trafficStats}
       />

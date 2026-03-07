@@ -208,7 +208,7 @@ Priority-stacked — highest value items first.
 
 - [x] **Historical replay** ⭐ — Persist events to disk and scrub through past traffic patterns with a timeline player
 - [x] **Heatmap overlay mode** ⭐ — Toggle from live avatars to a color-graded room heatmap showing traffic density over time
-- [ ] **User search & filter** — Find a specific user on the map; filter avatars by room, browser, or OS
+- [x] **User search & filter** — Find a specific user on the map; filter avatars by room, browser, or OS
 - [ ] **Threshold alerting** — Define rules (e.g. >N users in a room, conversion rate drops) and fire browser notifications or outbound webhooks
 - [ ] **Segment / Mixpanel adapters** — Support more analytics platforms alongside PostHog and OTel
 - [ ] **Alternative KPI tracking** — Not all sites have checkouts — add configurable KPI events (sign-ups, form submissions, etc.)
