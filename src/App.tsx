@@ -6,7 +6,7 @@ import type { UserState } from './components/Avatar';
 import type { RoomData } from './components/Room';
 import { TransactionPanel, type Transaction } from './components/TransactionPanel';
 import { SessionTimeline, type HistoryEntry } from './components/SessionTimeline';
-import { Activity, ArrowRight, Clock } from 'lucide-react';
+import { Activity, ArrowRight, Clock, Eye, Flame } from 'lucide-react';
 import { ReplayControls } from './components/ReplayControls';
 
 // Connect to the local backend server
@@ -41,7 +41,21 @@ const App: React.FC = () => {
   const [rooms, setRooms] = useState<RoomData[]>([]);
   const [connections, setConnections] = useState<ConnectionDef[]>([]);
   const [enableTransactions, setEnableTransactions] = useState(true);
+  const [viewMode, setViewMode] = useState<'live' | 'heatmap'>('live');
+  const [trafficStats, setTrafficStats] = useState<Record<string, number>>({});
   const feedRef = useRef<HTMLDivElement>(null);
+
+  // Helper to map room name to ID
+  const getRoomId = (roomName: string, roomsList: RoomData[]) => {
+    for (const r of roomsList) {
+      if (r.name === roomName) return r.id;
+      if (r.subRooms) {
+        const sub = r.subRooms.find(s => s.name === roomName);
+        if (sub) return sub.id;
+      }
+    }
+    return roomName;
+  };
 
   // Fetch room config on mount
   useEffect(() => {
@@ -61,6 +75,17 @@ const App: React.FC = () => {
 
     socket.on('gameState', (serverUsers: UserState[]) => {
       setUsers(serverUsers);
+      // Initialize traffic with current occupancy
+      setTrafficStats(prev => {
+        const next = { ...prev };
+        serverUsers.forEach(u => {
+          if (u.activeRoom) {
+            const roomId = getRoomId(u.activeRoom, rooms);
+            next[roomId] = (next[roomId] || 0) + 1;
+          }
+        });
+        return next;
+      });
     });
 
     socket.on('allHistory', (allHistory: Record<string, HistoryEntry[]>) => {
@@ -71,7 +96,23 @@ const App: React.FC = () => {
       setUsers(prev => {
         const exists = prev.find(u => u.id === updatedUser.id);
         if (exists) {
+          // If room changed, increment traffic
+          if (updatedUser.activeRoom && exists.activeRoom !== updatedUser.activeRoom) {
+            const roomId = getRoomId(updatedUser.activeRoom, rooms);
+            setTrafficStats(prevStats => ({
+              ...prevStats,
+              [roomId]: (prevStats[roomId] || 0) + 1
+            }));
+          }
           return prev.map(u => u.id === updatedUser.id ? updatedUser : u);
+        }
+        // New user
+        if (updatedUser.activeRoom) {
+          const roomId = getRoomId(updatedUser.activeRoom, rooms);
+          setTrafficStats(prevStats => ({
+            ...prevStats,
+            [roomId]: (prevStats[roomId] || 0) + 1
+          }));
         }
         return [...prev, updatedUser];
       });
@@ -155,28 +196,53 @@ const App: React.FC = () => {
               Live Actions
             </h1>
             {!replayMode && (
-              <button 
-                onClick={() => setReplayMode(true)}
-                style={{
-                  padding: '4px 10px',
-                  borderRadius: '8px',
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  backgroundColor: 'rgba(255,255,255,0.05)',
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.7rem',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
-                  transition: 'all 0.2s'
-                }}
-                onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'}
-                onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'}
-              >
-                <Clock size={12} />
-                Replay
-              </button>
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button 
+                  onClick={() => setReplayMode(true)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    backgroundColor: 'rgba(255,255,255,0.05)',
+                    color: 'var(--text-secondary)',
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.05)'}
+                >
+                  <Clock size={12} />
+                  Replay
+                </button>
+
+                <button 
+                  onClick={() => setViewMode(prev => prev === 'live' ? 'heatmap' : 'live')}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    backgroundColor: viewMode === 'heatmap' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.05)',
+                    color: viewMode === 'heatmap' ? 'var(--accent-gold)' : 'var(--text-secondary)',
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = viewMode === 'heatmap' ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.1)'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = viewMode === 'heatmap' ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.05)'}
+                >
+                  {viewMode === 'live' ? <Flame size={12} /> : <Eye size={12} />}
+                  {viewMode === 'live' ? 'Heatmap' : 'Live View'}
+                </button>
+              </div>
             )}
           </div>
           {replayMode ? (
@@ -303,6 +369,8 @@ const App: React.FC = () => {
         connections={connections}
         onAvatarClick={handleAvatarClick}
         selectedUserId={selectedUserId}
+        viewMode={viewMode}
+        trafficStats={trafficStats}
       />
     </div>
   );
