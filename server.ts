@@ -46,6 +46,14 @@ const ROOM_COORDS: Record<string, { x: number, y: number, w: number, h: number, 
 const URL_ROUTES: { pattern: string, exact: boolean, roomId: string }[] = [];
 const SUB_ROOM_EVENTS: { eventType: string, matchKey: string, matchValue: string, roomId: string }[] = [];
 
+// KPI Events config — custom conversion events (e.g. "signup", "form_submit", "goal_complete")
+const kpiEvents: { name: string, label: string }[] = (roomConfig.kpiEvents || []).map((e: any) =>
+    typeof e === 'string' ? { name: e, label: e } : { name: e.name, label: e.label || e.name }
+);
+const kpiEventNames = new Set(kpiEvents.map(e => e.name));
+const kpiCounts: Record<string, number> = {};
+for (const e of kpiEvents) kpiCounts[e.name] = 0;
+
 for (const room of roomConfig.rooms) {
     ROOM_COORDS[room.id] = { x: room.x, y: room.y, w: room.width, h: room.height, label: room.name };
 
@@ -84,7 +92,7 @@ URL_ROUTES.sort((a, b) => {
     return b.pattern.length - a.pattern.length;
 });
 
-console.log(`[Config] Loaded ${roomConfig.rooms.length} rooms, ${SUB_ROOM_EVENTS.length} sub-room events, ${URL_ROUTES.length} URL routes`);
+console.log(`[Config] Loaded ${roomConfig.rooms.length} rooms, ${SUB_ROOM_EVENTS.length} sub-room events, ${URL_ROUTES.length} URL routes, ${kpiEvents.length} KPI events`);
 
 // ─── Alert Config ───────────────────────────────────────────────────────────
 
@@ -153,9 +161,10 @@ async function evaluateAlerts() {
     }
 
     // Calculate conversion rate
-    // Simplified: users in 'checkout' / total users
-    const checkoutUsers = roomOccupancy['checkout'] || 0;
-    const conversionRate = totalUsers > 0 ? (checkoutUsers / totalUsers) * 100 : 0;
+    // If KPI events configured, use total KPI count; otherwise fall back to checkout room occupancy
+    const totalKpiHits = Object.values(kpiCounts).reduce((a, b) => a + b, 0);
+    const conversionNumerator = kpiEvents.length > 0 ? totalKpiHits : (roomOccupancy['checkout'] || 0);
+    const conversionRate = totalUsers > 0 ? (conversionNumerator / totalUsers) * 100 : 0;
 
     for (const rule of alertRules) {
         if (!rule.enabled) continue;
@@ -282,6 +291,8 @@ io.on('connection', (socket) => {
     socket.emit('gameState', Object.values(activeUsers));
     socket.emit('allHistory', userHistory);
     socket.emit('alertRulesUpdate', alertRules);
+    socket.emit('kpiConfig', kpiEvents);
+    socket.emit('kpiCounts', kpiCounts);
 
     socket.on('alertRuleToggle', ({ id, enabled }: { id: string, enabled: boolean }) => {
         const rule = alertRules.find(r => r.id === id);
@@ -337,6 +348,12 @@ function processEvent(data: {
     const txEnabled = roomConfig.enableTransactions !== false;
     const isPurchase = txEnabled && (event === 'order_completed' || event === '$purchase');
     const purchaseAmount = isPurchase ? (properties.$amount || properties.revenue || 0) : undefined;
+
+    // Detect KPI events
+    const isKpiEvent = kpiEventNames.has(event);
+    if (isKpiEvent) {
+        kpiCounts[event] = (kpiCounts[event] || 0) + 1;
+    }
     const isSubRoom = SUB_ROOM_EVENTS.some(e => e.eventType === event);
     const actionStr = isPurchase ? 'Purchase'
         : isSubRoom ? (properties.drawer || properties.modal || properties.form || 'Interaction')
@@ -407,6 +424,21 @@ function processEvent(data: {
             time: new Date().toLocaleTimeString()
         });
     }
+
+    // Emit KPI event
+    if (isKpiEvent) {
+        const kpiLabel = kpiEvents.find(e => e.name === event)?.label || event;
+        io.emit('kpiEvent', {
+            id: `kpi_${userId}_${Date.now()}`,
+            userId,
+            userName: name,
+            eventName: event,
+            eventLabel: kpiLabel,
+            color: userColor,
+            time: new Date().toLocaleTimeString()
+        });
+        io.emit('kpiCounts', kpiCounts);
+    }
 }
 
 function getRandomPositionInRoom(roomId: string) {
@@ -440,7 +472,7 @@ function parseUA(ua: string) {
 
 // Serve room config to frontend
 app.get('/api/rooms', (_req, res) => {
-    res.json(roomConfig);
+    res.json({ ...roomConfig, kpiEvents });
 });
 
 // Replay metadata
