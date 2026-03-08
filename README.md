@@ -202,29 +202,6 @@ All rooms are defined in [`rooms.json`](rooms.json) — edit this file to model 
 └── LICENSE                # MIT
 ```
 
-## Roadmap
-
-Priority-stacked — highest value items first.
-
-- [x] **Historical replay** ⭐ — Persist events to disk and scrub through past traffic patterns with a timeline player
-- [x] **Heatmap overlay mode** ⭐ — Toggle from live avatars to a color-graded room heatmap showing traffic density over time
-- [x] **User search & filter** — Find a specific user on the map; filter avatars by room, browser, or OS
-- [ ] **Threshold alerting** — Define rules (e.g. >N users in a room, conversion rate drops) and fire browser notifications or outbound webhooks
-- [ ] **Segment / Mixpanel adapters** — Support more analytics platforms alongside PostHog and OTel
-- [ ] **Alternative KPI tracking** — Not all sites have checkouts — add configurable KPI events (sign-ups, form submissions, etc.)
-- [ ] **Room furniture** — Add visual elements inside rooms (shopping carts, forms, etc.)
-- [ ] **Multiple floors** — Navigate between different map views for different site sections
-
-### Completed
-
-- [x] **Checkout transactions** — Floating 💲 animation on purchase events with transaction panel, revenue counter, and conversion rate
-- [x] **Sub-rooms for page elements** — Adjoining mini-rooms for on-page drawers, modals, and alternate page modes (Filter Panel, Quick View, Payment Form)
-- [x] **A\* pathfinding** — Avatars walk between rooms instead of teleporting
-- [x] **Session timelines** — Click an avatar to see their full journey through the site
-- [x] **Real PostHog webhook adapter** — Production-ready integration with HMAC-SHA256 signature verification and API key auth
-- [x] **OpenTelemetry / OTLP adapter** — Support for OTel JSON traces directly into the dashboard
-- [x] **Configurable room layouts** — JSON-based map definitions so anyone can model their site
-
 ## Contributing
 
 Contributions are welcome! See [CONTRIBUTING.md](CONTRIBUTING.md) for setup instructions and guidelines.
