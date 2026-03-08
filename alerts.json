@@ -1,0 +1,31 @@
+{
+  "alerts": [
+    {
+      "id": "checkout-spike",
+      "name": "Checkout spike",
+      "enabled": false,
+      "condition": { "type": "room_occupancy", "room": "checkout", "operator": "gt", "value": 5 },
+      "cooldownMs": 300000,
+      "actions": ["browser", "webhook"],
+      "webhookUrl": ""
+    },
+    {
+      "id": "conversion-drop",
+      "name": "Conversion rate drop",
+      "enabled": false,
+      "condition": { "type": "conversion_rate", "operator": "lt", "value": 10 },
+      "cooldownMs": 600000,
+      "actions": ["browser"],
+      "webhookUrl": ""
+    },
+    {
+      "id": "high-traffic",
+      "name": "High traffic alert",
+      "enabled": false,
+      "condition": { "type": "total_users", "operator": "gt", "value": 20 },
+      "cooldownMs": 300000,
+      "actions": ["browser"],
+      "webhookUrl": ""
+    }
+  ]
+}
