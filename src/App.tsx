@@ -6,8 +6,10 @@ import type { UserState } from './components/Avatar';
 import type { RoomData } from './components/Room';
 import { TransactionPanel, type Transaction } from './components/TransactionPanel';
 import { SessionTimeline, type HistoryEntry } from './components/SessionTimeline';
-import { Activity, ArrowRight, Clock, Eye, Flame, Search, Filter, X, Globe, Monitor, Home } from 'lucide-react';
+import { Activity, ArrowRight, Clock, Eye, Flame, Search, X, Globe, Monitor, Home, Settings } from 'lucide-react';
 import { ReplayControls } from './components/ReplayControls';
+import { AlertBanner } from './components/AlertBanner';
+import { AlertPanel, type AlertRule, type AlertTriggered } from './components/AlertPanel';
 
 // Connect to the local backend server
 const socket = io('http://localhost:3001');
@@ -43,6 +45,12 @@ const App: React.FC = () => {
   const [enableTransactions, setEnableTransactions] = useState(true);
   const [viewMode, setViewMode] = useState<'live' | 'heatmap'>('live');
   const [trafficStats, setTrafficStats] = useState<Record<string, number>>({});
+  
+  // Alert state
+  const [alertRules, setAlertRules] = useState<AlertRule[]>([]);
+  const [activeAlerts, setActiveAlerts] = useState<AlertTriggered[]>([]);
+  const [alertHistory, setAlertHistory] = useState<AlertTriggered[]>([]);
+  const [showAlertPanel, setShowAlertPanel] = useState(false);
   
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -157,6 +165,31 @@ const App: React.FC = () => {
       setSelectedUserId(prev => prev === userId ? null : prev);
     });
 
+    socket.on('alertRulesUpdate', (rules: AlertRule[]) => {
+      setAlertRules(rules);
+    });
+
+    socket.on('alert_triggered', (alert: AlertTriggered) => {
+      // 1. Show banner/toast
+      setActiveAlerts(prev => [...prev, alert]);
+      
+      // 2. Add to history
+      setAlertHistory(prev => [alert, ...prev].slice(0, 5));
+
+      // 3. Browser Notification
+      if ('Notification' in window) {
+        if (Notification.permission === 'granted') {
+          new Notification(alert.name, { body: alert.message, icon: '/vite.svg' });
+        } else if (Notification.permission !== 'denied') {
+          Notification.requestPermission().then(permission => {
+            if (permission === 'granted') {
+              new Notification(alert.name, { body: alert.message, icon: '/vite.svg' });
+            }
+          });
+        }
+      }
+    });
+
     return () => {
       socket.off('connect');
       socket.off('disconnect');
@@ -166,8 +199,14 @@ const App: React.FC = () => {
       socket.off('userHistory');
       socket.off('transaction');
       socket.off('userLeft');
+      socket.off('alertRulesUpdate');
+      socket.off('alert_triggered');
     };
-  }, []);
+  }, [rooms]);
+
+  const handleToggleAlertRule = (id: string, enabled: boolean) => {
+    socket.emit('alertRuleToggle', { id, enabled });
+  };
 
   const selectedUser = selectedUserId ? (replayMode ? replayUsers : users).find(u => u.id === selectedUserId) : null;
 
@@ -283,6 +322,42 @@ const App: React.FC = () => {
                 >
                   {viewMode === 'live' ? <Flame size={12} /> : <Eye size={12} />}
                   {viewMode === 'live' ? 'Heatmap' : 'Live View'}
+                </button>
+
+                <button 
+                  onClick={() => setShowAlertPanel(prev => !prev)}
+                  style={{
+                    padding: '4px 10px',
+                    borderRadius: '8px',
+                    border: '1px solid rgba(255,255,255,0.1)',
+                    backgroundColor: showAlertPanel ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.05)',
+                    color: showAlertPanel ? 'var(--accent-gold)' : 'var(--text-secondary)',
+                    fontSize: '0.7rem',
+                    fontWeight: 600,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    transition: 'all 0.2s',
+                    position: 'relative'
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.backgroundColor = showAlertPanel ? 'rgba(245, 158, 11, 0.3)' : 'rgba(255,255,255,0.1)'}
+                  onMouseOut={(e) => e.currentTarget.style.backgroundColor = showAlertPanel ? 'rgba(245, 158, 11, 0.2)' : 'rgba(255,255,255,0.05)'}
+                >
+                  <Settings size={12} />
+                  Alerts
+                  {alertRules.some(r => r.enabled) && (
+                    <span style={{
+                      position: 'absolute',
+                      top: '-4px',
+                      right: '-4px',
+                      width: '8px',
+                      height: '8px',
+                      borderRadius: '50%',
+                      backgroundColor: 'var(--accent-gold)',
+                      boxShadow: '0 0 8px var(--accent-gold)'
+                    }} />
+                  )}
                 </button>
               </div>
             )}
@@ -563,6 +638,24 @@ const App: React.FC = () => {
         viewMode={viewMode}
         trafficStats={trafficStats}
       />
+
+      {/* Threshold Alerts */}
+      {activeAlerts.map(alert => (
+        <AlertBanner
+          key={`${alert.id}-${alert.timestamp}`}
+          {...alert}
+          onDismiss={() => setActiveAlerts(prev => prev.filter(a => a !== alert))}
+        />
+      ))}
+
+      {showAlertPanel && (
+        <AlertPanel
+          rules={alertRules}
+          history={alertHistory}
+          onToggle={handleToggleAlertRule}
+          onClose={() => setShowAlertPanel(false)}
+        />
+      )}
     </div>
   );
 };

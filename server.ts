@@ -8,12 +8,7 @@ import path from 'path';
 
 const app = express();
 app.use(cors());
-// Use raw body parser for /api/events so HMAC is computed on the original bytes,
-// not a re-serialized JSON string (which can differ in key order / whitespace).
 app.use('/api/events', express.raw({ type: 'application/json' }));
-// express.json() runs globally but skips /api/events — express.raw() above consumes
-// that route's body first and sets req._body = true, causing the JSON parser to no-op.
-// This ordering is intentional: keep raw bytes intact for HMAC verification.
 app.use(express.json());
 
 const httpServer = createServer(app);
@@ -91,6 +86,159 @@ URL_ROUTES.sort((a, b) => {
 
 console.log(`[Config] Loaded ${roomConfig.rooms.length} rooms, ${SUB_ROOM_EVENTS.length} sub-room events, ${URL_ROUTES.length} URL routes`);
 
+// ─── Alert Config ───────────────────────────────────────────────────────────
+
+interface AlertCondition {
+    type: 'room_occupancy' | 'conversion_rate' | 'total_users';
+    room?: string;
+    operator: 'gt' | 'gte' | 'lt' | 'lte';
+    value: number;
+}
+
+interface AlertRule {
+    id: string;
+    name: string;
+    enabled: boolean;
+    condition: AlertCondition;
+    cooldownMs: number;
+    actions: ('browser' | 'webhook')[];
+    webhookUrl?: string;
+    lastFiredAt?: number;
+}
+
+let alertRules: AlertRule[] = [];
+const alertLastFired: Record<string, number> = {};
+const ALERTS_CONFIG_PATH = path.join(process.cwd(), 'alerts.json');
+
+function loadAlerts() {
+    try {
+        if (fs.existsSync(ALERTS_CONFIG_PATH)) {
+            const data = JSON.parse(fs.readFileSync(ALERTS_CONFIG_PATH, 'utf-8'));
+            const rules = data.alerts || [];
+            // Merge with in-memory lastFired state
+            alertRules = rules.map((r: AlertRule) => ({
+                ...r,
+                lastFiredAt: alertLastFired[r.id]
+            }));
+            console.log(`[Alerts] Loaded ${alertRules.length} rules`);
+            // Broadcast updated rules to all clients
+            io.emit('alertRulesUpdate', alertRules);
+        }
+    } catch (err) {
+        console.error('[Alerts] Failed to load alerts.json:', err);
+    }
+}
+
+loadAlerts();
+
+// Watch for changes to alerts.json
+fs.watch(ALERTS_CONFIG_PATH, (event) => {
+    if (event === 'change') {
+        console.log('[Alerts] alerts.json changed, reloading...');
+        loadAlerts();
+    }
+});
+
+async function evaluateAlerts() {
+    const now = Date.now();
+    const users = Object.values(activeUsers);
+    const totalUsers = users.length;
+
+    // Calculate room occupancy
+    const roomOccupancy: Record<string, number> = {};
+    for (const user of users) {
+        const room = roomConfig.rooms.find((r: { name: string, id: string }) => r.name === user.activeRoom);
+        const roomId = room?.id || 'unknown';
+        roomOccupancy[roomId] = (roomOccupancy[roomId] || 0) + 1;
+    }
+
+    // Calculate conversion rate
+    // Simplified: users in 'checkout' / total users
+    const checkoutUsers = roomOccupancy['checkout'] || 0;
+    const conversionRate = totalUsers > 0 ? (checkoutUsers / totalUsers) * 100 : 0;
+
+    for (const rule of alertRules) {
+        if (!rule.enabled) continue;
+
+        // Check cooldown
+        if (alertLastFired[rule.id] && (now - alertLastFired[rule.id]) < rule.cooldownMs) {
+            continue;
+        }
+
+        let triggered = false;
+        let currentValue = 0;
+        let message = '';
+
+        if (rule.condition.type === 'total_users') {
+            currentValue = totalUsers;
+            triggered = compare(currentValue, rule.condition.operator, rule.condition.value);
+            message = `Total users: ${currentValue} (threshold: ${rule.condition.value})`;
+        } else if (rule.condition.type === 'room_occupancy' && rule.condition.room) {
+            currentValue = roomOccupancy[rule.condition.room] || 0;
+            const roomLabel = ROOM_COORDS[rule.condition.room]?.label || rule.condition.room;
+            triggered = compare(currentValue, rule.condition.operator, rule.condition.value);
+            message = `${roomLabel} has ${currentValue} active users (threshold: ${rule.condition.value})`;
+        } else if (rule.condition.type === 'conversion_rate') {
+            currentValue = conversionRate;
+            triggered = compare(currentValue, rule.condition.operator, rule.condition.value);
+            message = `Conversion rate is ${currentValue.toFixed(1)}% (threshold: ${rule.condition.value}%)`;
+        }
+
+        if (triggered) {
+            alertLastFired[rule.id] = now;
+            rule.lastFiredAt = now;
+            console.log(`[Alerts] TRIGGERED: ${rule.name} - ${message}`);
+
+            // Broadcast updated rule status (lastFiredAt)
+            io.emit('alertRulesUpdate', alertRules);
+
+            const alertPayload = {
+                id: rule.id,
+                name: rule.name,
+                message,
+                condition: rule.condition,
+                timestamp: now
+            };
+
+            // Action: Browser (Socket.io)
+            if (rule.actions.includes('browser')) {
+                io.emit('alert_triggered', alertPayload);
+            }
+
+            // Action: Webhook
+            if (rule.actions.includes('webhook') && rule.webhookUrl) {
+                const webhookPayload = {
+                    alert: rule.id,
+                    message,
+                    timestamp: now,
+                    roomCounts: roomOccupancy,
+                    totalUsers
+                };
+
+                fetch(rule.webhookUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(webhookPayload)
+                }).catch(err => {
+                    if (err instanceof Error) {
+                        console.error(`[Alerts] Webhook failed for ${rule.id}:`, err.message);
+                    }
+                });
+            }
+        }
+    }
+}
+
+function compare(val: number, op: string, threshold: number): boolean {
+    switch (op) {
+        case 'gt': return val > threshold;
+        case 'gte': return val >= threshold;
+        case 'lt': return val < threshold;
+        case 'lte': return val <= threshold;
+        default: return false;
+    }
+}
+
 // ─── State storage ──────────────────────────────────────────────────────────
 
 const activeUsers: Record<string, any> = {};
@@ -133,6 +281,16 @@ io.on('connection', (socket) => {
 
     socket.emit('gameState', Object.values(activeUsers));
     socket.emit('allHistory', userHistory);
+    socket.emit('alertRulesUpdate', alertRules);
+
+    socket.on('alertRuleToggle', ({ id, enabled }: { id: string, enabled: boolean }) => {
+        const rule = alertRules.find(r => r.id === id);
+        if (rule) {
+            rule.enabled = enabled;
+            console.log(`[Alerts] Rule '${rule.name}' ${enabled ? 'enabled' : 'disabled'} via client`);
+            io.emit('alertRulesUpdate', alertRules);
+        }
+    });
 
     socket.on('disconnect', () => {
         console.log('Client disconnected:', socket.id);
@@ -234,6 +392,9 @@ function processEvent(data: {
     // Broadcast the update to all connected React clients
     io.emit('userUpdate', activeUsers[userId]);
     io.emit('userHistory', { userId, history: userHistory[userId] });
+
+    // Evaluate alerts after state update
+    evaluateAlerts();
 
     // Emit transaction event for purchases
     if (isPurchase && purchaseAmount) {
