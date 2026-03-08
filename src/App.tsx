@@ -4,7 +4,12 @@ import './index.css';
 import { GameMap } from './components/GameMap';
 import type { UserState } from './components/Avatar';
 import type { RoomData } from './components/Room';
-import { TransactionPanel, type Transaction } from './components/TransactionPanel';
+import {
+  TransactionPanel,
+  type Transaction,
+  type KpiEvent,
+  type KpiConfig,
+} from './components/TransactionPanel';
 import { SessionTimeline, type HistoryEntry } from './components/SessionTimeline';
 import { Activity, ArrowRight, Clock, Eye, Flame, Search, X, Globe, Monitor, Home, Settings } from 'lucide-react';
 import { ReplayControls } from './components/ReplayControls';
@@ -38,6 +43,9 @@ const App: React.FC = () => {
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [totalRevenue, setTotalRevenue] = useState(0);
+  const [kpiEventsList, setKpiEventsList] = useState<KpiEvent[]>([]);
+  const [kpiCounts, setKpiCounts] = useState<Record<string, number>>({});
+  const [kpiConfig, setKpiConfig] = useState<KpiConfig[]>([]);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [userHistories, setUserHistories] = useState<Record<string, HistoryEntry[]>>({});
   const [rooms, setRooms] = useState<RoomData[]>([]);
@@ -80,6 +88,9 @@ const App: React.FC = () => {
         setRooms(config.rooms);
         setConnections(config.connections);
         setEnableTransactions(config.enableTransactions !== false);
+        if (config.kpiEvents && config.kpiEvents.length > 0) {
+          setKpiConfig(config.kpiEvents);
+        }
       })
       .catch(err => console.error('Failed to load room config:', err));
   }, []);
@@ -155,6 +166,18 @@ const App: React.FC = () => {
       setTotalRevenue(prev => prev + txn.amount);
     });
 
+    socket.on('kpiEvent', (evt: KpiEvent) => {
+      setKpiEventsList(prev => [evt, ...prev].slice(0, 50));
+    });
+
+    socket.on('kpiCounts', (counts: Record<string, number>) => {
+      setKpiCounts(counts);
+    });
+
+    socket.on('kpiConfig', (config: KpiConfig[]) => {
+      setKpiConfig(config);
+    });
+
     socket.on('userLeft', (userId: string) => {
       setUsers(prev => prev.filter(u => u.id !== userId));
       setUserHistories(prev => {
@@ -198,6 +221,9 @@ const App: React.FC = () => {
       socket.off('userUpdate');
       socket.off('userHistory');
       socket.off('transaction');
+      socket.off('kpiEvent');
+      socket.off('kpiCounts');
+      socket.off('kpiConfig');
       socket.off('userLeft');
       socket.off('alertRulesUpdate');
       socket.off('alert_triggered');
@@ -555,11 +581,14 @@ const App: React.FC = () => {
       )}
 
       {/* Transaction Panel - Bottom Left (only if enabled) */}
-      {enableTransactions && (
+      {(enableTransactions || kpiConfig.length > 0) && (
         <TransactionPanel
           transactions={transactions}
           totalRevenue={totalRevenue}
           totalUsers={displayUsers.length}
+          kpiEvents={kpiEventsList}
+          kpiCounts={kpiCounts}
+          kpiConfig={kpiConfig}
         />
       )}
 

@@ -1,6 +1,7 @@
 {
     "gridSize": 40,
     "enableTransactions": true,
+    "kpiEvents": [],
     "rooms": [
         {
             "id": "login",
