@@ -39,7 +39,11 @@ if (!OTEL_BEARER_TOKEN) {
 
 // ─── Load room config from rooms.json ───────────────────────────────────────
 
-const roomConfig = JSON.parse(fs.readFileSync(path.join(import.meta.dirname || __dirname, 'rooms.json'), 'utf-8'));
+const DATA_DIR = path.join(import.meta.dirname || __dirname, 'data');
+const roomsPath = fs.existsSync(path.join(DATA_DIR, 'rooms.json'))
+    ? path.join(DATA_DIR, 'rooms.json')
+    : path.join(import.meta.dirname || __dirname, 'rooms.json');
+const roomConfig = JSON.parse(fs.readFileSync(roomsPath, 'utf-8'));
 
 // Build ROOM_COORDS dynamically from config
 const ROOM_COORDS: Record<string, { x: number, y: number, w: number, h: number, label: string }> = {};
@@ -116,7 +120,9 @@ interface AlertRule {
 
 let alertRules: AlertRule[] = [];
 const alertLastFired: Record<string, number> = {};
-const ALERTS_CONFIG_PATH = path.join(process.cwd(), 'alerts.json');
+const ALERTS_CONFIG_PATH = fs.existsSync(path.join(DATA_DIR, 'alerts.json'))
+    ? path.join(DATA_DIR, 'alerts.json')
+    : path.join(process.cwd(), 'alerts.json');
 
 function loadAlerts() {
     try {
