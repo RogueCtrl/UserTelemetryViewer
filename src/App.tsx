@@ -11,7 +11,7 @@ import {
   type KpiConfig,
 } from './components/TransactionPanel';
 import { SessionTimeline, type HistoryEntry } from './components/SessionTimeline';
-import { Activity, ArrowRight, Clock, Eye, Flame, Search, X, Globe, Monitor, Home, Settings } from 'lucide-react';
+import { Activity, ArrowRight, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clock, Eye, Flame, Search, X, Globe, Monitor, Home, Settings } from 'lucide-react';
 import { ReplayControls } from './components/ReplayControls';
 import { AlertBanner } from './components/AlertBanner';
 import { AlertPanel, type AlertRule, type AlertTriggered } from './components/AlertPanel';
@@ -65,6 +65,8 @@ const App: React.FC = () => {
   const [roomFilter, setRoomFilter] = useState<string>('all');
   const [browserFilter, setBrowserFilter] = useState<string>('all');
   const [osFilter, setOsFilter] = useState<string>('all');
+  const [panelCollapsed, setPanelCollapsed] = useState(true);
+  const [feedCollapsed, setFeedCollapsed] = useState(false);
   
   const feedRef = useRef<HTMLDivElement>(null);
 
@@ -88,6 +90,9 @@ const App: React.FC = () => {
         setRooms(config.rooms);
         setConnections(config.connections);
         setEnableTransactions(config.enableTransactions !== false);
+        if (config.defaultView === 'live' || config.defaultView === 'heatmap') {
+          setViewMode(config.defaultView);
+        }
         if (config.kpiEvents && config.kpiEvents.length > 0) {
           setKpiConfig(config.kpiEvents);
         }
@@ -288,7 +293,10 @@ const App: React.FC = () => {
           left: 24,
           padding: '16px 24px',
           zIndex: 100,
-          minWidth: '260px'
+          minWidth: '260px',
+          transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+          maxHeight: panelCollapsed ? '80px' : '600px',
+          overflow: 'hidden',
         }}
       >
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
@@ -302,6 +310,23 @@ const App: React.FC = () => {
             }}>
               Live Actions
             </h1>
+            <button
+              onClick={() => setPanelCollapsed(prev => !prev)}
+              style={{
+                background: 'none',
+                border: 'none',
+                color: 'var(--text-secondary)',
+                cursor: 'pointer',
+                padding: '2px',
+                display: 'flex',
+                alignItems: 'center',
+                transition: 'color 0.2s',
+              }}
+              onMouseOver={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+              onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+            >
+              {panelCollapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
+            </button>
             {!replayMode && (
               <div style={{ display: 'flex', gap: '8px' }}>
                 <button 
@@ -421,7 +446,7 @@ const App: React.FC = () => {
           </p>
         </div>
 
-        {/* Search & Filters */}
+        {/* Search & Filters (collapsible) */}
         <div style={{ 
           marginTop: '16px', 
           paddingTop: '16px', 
@@ -612,47 +637,87 @@ const App: React.FC = () => {
           top: 24,
           right: 24,
           bottom: 24,
-          width: '280px',
+          width: feedCollapsed ? '48px' : '280px',
           zIndex: 100,
           display: 'flex',
           flexDirection: 'column',
-          overflow: 'hidden'
+          overflow: 'hidden',
+          transition: 'width 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
         }}
       >
-        <div style={{ padding: '16px 16px 12px', borderBottom: '1px solid var(--surface-border)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <Activity size={16} color="var(--accent-purple)" />
-          <h2 style={{ fontSize: '0.9rem', margin: 0, color: 'var(--text-primary)' }}>Activity Feed</h2>
-        </div>
-        <div ref={feedRef} style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
-          {feed.length === 0 && (
-            <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontStyle: 'italic', textAlign: 'center', marginTop: '24px' }}>
-              Waiting for events...
-            </p>
+        <div style={{ padding: feedCollapsed ? '16px 12px 12px' : '16px 16px 12px', borderBottom: '1px solid var(--surface-border)', display: 'flex', alignItems: 'center', gap: '8px', justifyContent: feedCollapsed ? 'center' : 'flex-start' }}>
+          <button
+            onClick={() => setFeedCollapsed(prev => !prev)}
+            style={{
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              padding: '2px',
+              display: 'flex',
+              alignItems: 'center',
+              color: 'var(--accent-purple)',
+              transition: 'color 0.2s',
+            }}
+            onMouseOver={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+            onMouseOut={(e) => e.currentTarget.style.color = 'var(--accent-purple)'}
+          >
+            {feedCollapsed ? <ChevronLeft size={16} /> : <Activity size={16} />}
+          </button>
+          {!feedCollapsed && (
+            <>
+              <h2 style={{ fontSize: '0.9rem', margin: 0, color: 'var(--text-primary)', flex: 1 }}>Activity Feed</h2>
+              <button
+                onClick={() => setFeedCollapsed(true)}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  padding: '2px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  transition: 'color 0.2s',
+                }}
+                onMouseOver={(e) => e.currentTarget.style.color = 'var(--text-primary)'}
+                onMouseOut={(e) => e.currentTarget.style.color = 'var(--text-secondary)'}
+              >
+                <ChevronRight size={14} />
+              </button>
+            </>
           )}
-          {feed.map(item => (
-            <div key={item.id} style={{
-              padding: '8px 10px',
-              marginBottom: '6px',
-              borderRadius: '10px',
-              backgroundColor: item.isPurchase ? 'rgba(245, 158, 11, 0.08)' : 'rgba(255,255,255,0.03)',
-              border: item.isPurchase ? '1px solid rgba(245, 158, 11, 0.15)' : '1px solid rgba(255,255,255,0.05)',
-              animation: 'slideIn 0.3s ease-out',
-            }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
-                <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: item.isPurchase ? 'var(--accent-gold)' : item.color, flexShrink: 0 }} />
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.userName}</span>
-                <ArrowRight size={10} color="var(--text-secondary)" />
-                <span style={{ fontSize: '0.75rem', color: item.isPurchase ? 'var(--accent-gold)' : 'var(--accent-blue)' }}>{item.room}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: '0.65rem', color: item.isPurchase ? 'var(--accent-gold)' : 'var(--accent-green)' }}>
-                  {item.isPurchase ? '💲 ' : ''}{item.action}
-                </span>
-                <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', opacity: 0.6 }}>{item.time}</span>
-              </div>
-            </div>
-          ))}
         </div>
+        {!feedCollapsed && (
+          <div ref={feedRef} style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
+            {feed.length === 0 && (
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.75rem', fontStyle: 'italic', textAlign: 'center', marginTop: '24px' }}>
+                Waiting for events...
+              </p>
+            )}
+            {feed.map(item => (
+              <div key={item.id} style={{
+                padding: '8px 10px',
+                marginBottom: '6px',
+                borderRadius: '10px',
+                backgroundColor: item.isPurchase ? 'rgba(245, 158, 11, 0.08)' : 'rgba(255,255,255,0.03)',
+                border: item.isPurchase ? '1px solid rgba(245, 158, 11, 0.15)' : '1px solid rgba(255,255,255,0.05)',
+                animation: 'slideIn 0.3s ease-out',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', marginBottom: '4px' }}>
+                  <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: item.isPurchase ? 'var(--accent-gold)' : item.color, flexShrink: 0 }} />
+                  <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-primary)' }}>{item.userName}</span>
+                  <ArrowRight size={10} color="var(--text-secondary)" />
+                  <span style={{ fontSize: '0.75rem', color: item.isPurchase ? 'var(--accent-gold)' : 'var(--accent-blue)' }}>{item.room}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontSize: '0.65rem', color: item.isPurchase ? 'var(--accent-gold)' : 'var(--accent-green)' }}>
+                    {item.isPurchase ? '💲 ' : ''}{item.action}
+                  </span>
+                  <span style={{ fontSize: '0.6rem', color: 'var(--text-secondary)', opacity: 0.6 }}>{item.time}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </aside>
 
       {/* Main Game Map */}

@@ -40,9 +40,12 @@ if (!OTEL_BEARER_TOKEN) {
 // ─── Load room config from rooms.json ───────────────────────────────────────
 
 const DATA_DIR = path.join(import.meta.dirname || __dirname, 'data');
+const BASE_DIR = import.meta.dirname || __dirname;
 const roomsPath = fs.existsSync(path.join(DATA_DIR, 'rooms.json'))
     ? path.join(DATA_DIR, 'rooms.json')
-    : path.join(import.meta.dirname || __dirname, 'rooms.json');
+    : fs.existsSync(path.join(BASE_DIR, 'rooms-agent.json'))
+        ? path.join(BASE_DIR, 'rooms-agent.json')
+        : path.join(BASE_DIR, 'rooms.json');
 const roomConfig = JSON.parse(fs.readFileSync(roomsPath, 'utf-8'));
 
 // Build ROOM_COORDS dynamically from config
@@ -57,6 +60,14 @@ const kpiEvents: { name: string, label: string }[] = (roomConfig.kpiEvents || []
 const kpiEventNames = new Set(kpiEvents.map(e => e.name));
 const kpiCounts: Record<string, number> = {};
 for (const e of kpiEvents) kpiCounts[e.name] = 0;
+
+// Room-visit KPI tracking: map roomId -> KPI event name
+const roomVisitKpi: Record<string, string> = {};
+for (const e of (roomConfig.kpiEvents || [])) {
+    if (e.trackRoomVisit) {
+        roomVisitKpi[e.trackRoomVisit] = e.name;
+    }
+}
 
 for (const room of roomConfig.rooms) {
     ROOM_COORDS[room.id] = { x: room.x, y: room.y, w: room.width, h: room.height, label: room.name };
@@ -355,10 +366,25 @@ function processEvent(data: {
     const isPurchase = txEnabled && (event === 'order_completed' || event === '$purchase');
     const purchaseAmount = isPurchase ? (properties.$amount || properties.revenue || 0) : undefined;
 
+    // Track room-visit KPI (for non-orchestrator rooms with trackRoomVisit config)
+    const roomVisitKpiName = roomVisitKpi[room];
+    if (roomVisitKpiName) {
+        kpiCounts[roomVisitKpiName] = (kpiCounts[roomVisitKpiName] || 0) + 1;
+    }
+
     // Detect KPI events
     const isKpiEvent = kpiEventNames.has(event);
     if (isKpiEvent) {
         kpiCounts[event] = (kpiCounts[event] || 0) + 1;
+    }
+
+    // Track room-visit KPIs for non-orchestrator rooms
+    const roomVisitKey = `room_visit_${room}`;
+    const isRoomVisitKpi = room !== 'orchestrator' && kpiEventNames.has(roomVisitKey);
+    const previousRoom = activeUsers[userId]?.activeRoom;
+    const currentRoomLabel = (ROOM_COORDS[room] || ROOM_COORDS[roomConfig.rooms[0]?.id || 'login']).label;
+    if (isRoomVisitKpi && previousRoom !== currentRoomLabel) {
+        kpiCounts[roomVisitKey] = (kpiCounts[roomVisitKey] || 0) + 1;
     }
     const isSubRoom = SUB_ROOM_EVENTS.some(e => e.eventType === event);
     const actionStr = isPurchase ? 'Purchase'
@@ -439,6 +465,36 @@ function processEvent(data: {
             userId,
             userName: name,
             eventName: event,
+            eventLabel: kpiLabel,
+            color: userColor,
+            time: new Date().toLocaleTimeString()
+        });
+        io.emit('kpiCounts', kpiCounts);
+    }
+
+    // Emit room-visit KPI event
+    if (roomVisitKpiName) {
+        const kpiLabel = kpiEvents.find(e => e.name === roomVisitKpiName)?.label || roomVisitKpiName;
+        io.emit('kpiEvent', {
+            id: `kpi_rv_${userId}_${Date.now()}`,
+            userId,
+            userName: name,
+            eventName: roomVisitKpiName,
+            eventLabel: kpiLabel,
+            color: userColor,
+            time: new Date().toLocaleTimeString()
+        });
+        io.emit('kpiCounts', kpiCounts);
+    }
+
+    // Emit room-visit KPI event
+    if (isRoomVisitKpi && previousRoom !== currentRoomLabel) {
+        const kpiLabel = kpiEvents.find(e => e.name === roomVisitKey)?.label || roomVisitKey;
+        io.emit('kpiEvent', {
+            id: `kpi_rv_${userId}_${Date.now()}`,
+            userId,
+            userName: name,
+            eventName: roomVisitKey,
             eventLabel: kpiLabel,
             color: userColor,
             time: new Date().toLocaleTimeString()

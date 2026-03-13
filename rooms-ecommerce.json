@@ -1,0 +1,72 @@
+{
+    "name": "E-Commerce",
+    "gridSize": 40,
+    "enableTransactions": true,
+    "defaultView": "live",
+    "kpiEvents": [
+        { "name": "session_end", "label": "Sessions" },
+        { "name": "order_completed", "label": "Orders" },
+        { "name": "room_visit_product", "label": "Product Views", "trackRoomVisit": "product" },
+        { "name": "room_visit_cart", "label": "Cart Views", "trackRoomVisit": "cart" },
+        { "name": "room_visit_checkout", "label": "Checkout Views", "trackRoomVisit": "checkout" },
+        { "name": "room_visit_confirmation", "label": "Confirmations", "trackRoomVisit": "confirmation" }
+    ],
+    "rooms": [
+        {
+            "id": "homepage",
+            "name": "Homepage",
+            "x": 2,
+            "y": 2,
+            "width": 8,
+            "height": 5,
+            "color": "rgba(59, 130, 246, 0.15)",
+            "urlPatterns": ["/", "/home"]
+        },
+        {
+            "id": "product",
+            "name": "Product Catalog",
+            "x": 14,
+            "y": 2,
+            "width": 8,
+            "height": 6,
+            "color": "rgba(139, 92, 246, 0.15)",
+            "urlPatterns": ["/products", "/product", "/collections"]
+        },
+        {
+            "id": "cart",
+            "name": "Cart",
+            "x": 24,
+            "y": 2,
+            "width": 6,
+            "height": 5,
+            "color": "rgba(245, 158, 11, 0.15)",
+            "urlPatterns": ["/cart", "/basket"]
+        },
+        {
+            "id": "checkout",
+            "name": "Checkout",
+            "x": 14,
+            "y": 10,
+            "width": 8,
+            "height": 5,
+            "color": "rgba(236, 72, 153, 0.15)",
+            "urlPatterns": ["/checkout", "/payment"]
+        },
+        {
+            "id": "confirmation",
+            "name": "Order Confirmation",
+            "x": 24,
+            "y": 10,
+            "width": 6,
+            "height": 5,
+            "color": "rgba(16, 185, 129, 0.15)",
+            "urlPatterns": ["/confirmation", "/thank-you", "/order-complete"]
+        }
+    ],
+    "connections": [
+        { "from": "homepage", "to": "product" },
+        { "from": "product", "to": "cart" },
+        { "from": "cart", "to": "checkout" },
+        { "from": "checkout", "to": "confirmation" }
+    ]
+}
